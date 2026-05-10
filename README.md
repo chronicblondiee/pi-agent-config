@@ -2,7 +2,9 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-09 — added `claude-mode` extension (confirmation gate + `/plan` / `/yolo` / `/ask` / `/trust` slash commands), APPEND_SYSTEM.md guidance, corrected `input` arrays (all four models support Vision in LM Studio), and added `contextWindow` per model so pi auto-compacts at the real loaded context instead of pi's 128K default
+**Last updated:** 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
+
+Previous: 2026-05-09 — added `claude-mode` extension (confirmation gate + `/plan` / `/yolo` / `/ask` / `/trust` slash commands), APPEND_SYSTEM.md guidance, corrected `input` arrays (all four models support Vision in LM Studio), and added `contextWindow` per model so pi auto-compacts at the real loaded context instead of pi's 128K default
 
 ---
 
@@ -159,8 +161,8 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
       "api": "openai-completions",
       "apiKey": "lm-studio",
       "models": [
-        { "id": "qwen/qwen3.6-27b",          "input": ["text", "image"], "contextWindow": 65536 },
-        { "id": "qwen/qwen3.6-35b-a3b",      "input": ["text", "image"], "contextWindow": 24576 },
+        { "id": "qwen/qwen3.6-27b",          "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
+        { "id": "qwen/qwen3.6-35b-a3b",      "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
         { "id": "google/gemma-4-26b-a4b",    "input": ["text", "image"], "contextWindow": 65536 },
         { "id": "google/gemma-4-31b",        "input": ["text", "image"], "contextWindow": 24576 }
       ]
