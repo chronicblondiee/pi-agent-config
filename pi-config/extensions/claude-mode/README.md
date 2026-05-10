@@ -29,7 +29,7 @@ This extension is auto-discovered by pi when present at `~/.pi/agent/extensions/
 
 ```fish
 mkdir -p ~/.pi/agent/extensions
-ln -s ~/projects/local-llm-setup/pi-config/extensions/claude-mode ~/.pi/agent/extensions/claude-mode
+ln -s ~/projects/pi-agent-config/pi-config/extensions/claude-mode ~/.pi/agent/extensions/claude-mode
 ```
 
 That way edits in this repo take effect on the next pi launch (or `/reload` inside pi).
@@ -37,7 +37,7 @@ That way edits in this repo take effect on the next pi launch (or `/reload` insi
 No `npm install` is needed — pi loads the `.ts` file directly via jiti, and the only import is type-only (stripped at runtime). For IDE type resolution, optionally:
 
 ```fish
-cd ~/projects/local-llm-setup/pi-config/extensions/claude-mode
+cd ~/projects/pi-agent-config/pi-config/extensions/claude-mode
 npm init -y && npm i -D @earendil-works/pi-coding-agent
 ```
 
