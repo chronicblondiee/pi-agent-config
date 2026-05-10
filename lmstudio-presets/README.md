@@ -13,7 +13,7 @@ One file per model id. Path format mirrors the model's HuggingFace org/repo (e.g
 If you ever blow away `~/.lmstudio/` or move to a new machine, snapshot the preset directory first:
 
 ```fish
-cp -r ~/.lmstudio/.internal/user-concrete-model-default-config ~/projects/local-llm-setup/lmstudio-presets/snapshot-(date +%Y%m%d)/
+cp -r ~/.lmstudio/.internal/user-concrete-model-default-config ~/projects/pi-agent-config/lmstudio-presets/snapshot-(date +%Y%m%d)/
 ```
 
 Then restore by copying back into the same path on the new machine.

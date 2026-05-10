@@ -220,7 +220,7 @@ Install (one-time symlink so edits in this repo take effect live):
 
 ```fish
 mkdir -p ~/.pi/agent/extensions
-ln -s ~/projects/local-llm-setup/pi-config/extensions/claude-mode ~/.pi/agent/extensions/claude-mode
+ln -s ~/projects/pi-agent-config/pi-config/extensions/claude-mode ~/.pi/agent/extensions/claude-mode
 ```
 
 Pi auto-discovers `~/.pi/agent/extensions/*/index.ts` — no settings.json entry needed. See [`pi-config/extensions/claude-mode/README.md`](./pi-config/extensions/claude-mode/README.md) for design notes and known limits.
