@@ -84,6 +84,11 @@ export default function (pi: ExtensionAPI): void {
   ): Promise<void> {
     try {
       await pi.exec("git", ["reset", "--hard", sha]);
+      // reset --hard only touches tracked files; clean removes any
+      // untracked files the agent created after the checkpoint so the
+      // working tree truly matches the checkpoint state. .gitignore is
+      // respected (no -x), so genuinely ignored files survive.
+      await pi.exec("git", ["clean", "-fd"]);
       ctx.ui.notify(`Restored to checkpoint ${sha.slice(0, 8)}`, "success");
     } catch (err) {
       ctx.ui.notify(`Restore failed: ${err}`, "error");
