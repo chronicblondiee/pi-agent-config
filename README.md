@@ -2,7 +2,9 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
+**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions
+
+Previous: 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
 
 Previous: 2026-05-09 — added `claude-mode` extension (confirmation gate + `/plan` / `/yolo` / `/ask` / `/trust` slash commands), APPEND_SYSTEM.md guidance, corrected `input` arrays (all four models support Vision in LM Studio), and added `contextWindow` per model so pi auto-compacts at the real loaded context instead of pi's 128K default
 
@@ -224,6 +226,37 @@ ln -s ~/projects/pi-agent-config/pi-config/extensions/claude-mode ~/.pi/agent/ex
 ```
 
 Pi auto-discovers `~/.pi/agent/extensions/*/index.ts` — no settings.json entry needed. See [`pi-config/extensions/claude-mode/README.md`](./pi-config/extensions/claude-mode/README.md) for design notes and known limits.
+
+### Additional extensions
+
+Four more extensions ship alongside claude-mode. All are in [`pi-config/extensions/`](./pi-config/extensions/) and use the same symlink pattern.
+
+| Extension | What it does | Commands |
+|---|---|---|
+| **git-checkpoint** | Commits before each agent turn; offers restore on `/fork`. Note: rewrites your working-tree commits while pi runs — incompatible with `git add -p` workflows. | `/checkpoint`, `/checkpoints`, `/restore <sha>` |
+| **protected-paths** | Blocks writes to `.env*`, `.git/`, `node_modules/`, `.ssh/`, etc. (even in `/yolo` mode) | `/trust-paths`, `/unprotect <path>` |
+| **todo-tracker** | `todo` tool for the LLM to manage a task list; status widget shows `done/total` | `/todos` |
+| **dirty-repo-guard** | Warns before session exit/switch/fork if working tree has uncommitted changes (no-op in `-p` / headless mode) | `/dirty` |
+
+Install all four:
+
+```fish
+for ext in git-checkpoint protected-paths todo-tracker dirty-repo-guard;
+  ln -sf ~/projects/pi-agent-config/pi-config/extensions/$ext ~/.pi/agent/extensions/$ext;
+end
+```
+
+### `@juicesharp/rpiv-ask-user-question` package
+
+This [pi package](https://pi.dev/packages/@juicesharp/rpiv-ask-user-question) adds a custom provider that routes clarifying questions back to you during agent loops. Instead of guessing, the agent can ask.
+
+Add to `~/.pi/agent/settings.json`:
+
+```json
+{
+  "packages": ["npm:@juicesharp/rpiv-ask-user-question"]
+}
+```
 
 ---
 
