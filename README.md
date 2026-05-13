@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-14 — added a `question` extension (vendored from the upstream pi example) that registers a `question` tool letting the agent pause mid-turn for user input — ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer, Esc cancels; headless `pi -p` returns an error result instead of blocking. Added to both `ASK_TOOLS` and `PLAN_TOOLS` (UI only, no side effects); later same day: added an `ast-grep` extension that wraps the [ast-grep](https://ast-grep.github.io/) CLI as an LLM-callable tool for structural (tree-sitter AST) code search with meta-variable captures (`$NAME`, `$$$ARGS`), `--json=stream` parsing, default 200-match cap (hard cap 1000), 30 s timeout, and `--rewrite` deliberately not exposed (use `edit`/`write` to keep claude-mode's gate in the loop). Added to both `ASK_TOOLS` and `PLAN_TOOLS` (read-only).
+**Last updated:** 2026-05-14 — added a `question` extension (vendored from the upstream pi example) that registers a `question` tool letting the agent pause mid-turn for user input — ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer, Esc cancels; headless `pi -p` returns an error result instead of blocking. Added to both `ASK_TOOLS` and `PLAN_TOOLS` (UI only, no side effects); later same day: added an `ast-grep` extension that wraps the [ast-grep](https://ast-grep.github.io/) CLI as an LLM-callable tool for structural (tree-sitter AST) code search with meta-variable captures (`$NAME`, `$$$ARGS`), `--json=stream` parsing, default 200-match cap (hard cap 1000), 30 s timeout, and `--rewrite` deliberately not exposed (use `edit`/`write` to keep claude-mode's gate in the loop). Added to both `ASK_TOOLS` and `PLAN_TOOLS` (read-only); later same day: dropped the stale `@juicesharp/rpiv-ask-user-question` package section — the in-repo `question` extension supersedes it and the package is not installed.
 
 Previous: 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode, two starter skills (`diagnose-tool-call-failure`, `checkpoint-recovery-walkthrough`) under `pi-config/skills/`, enabled `reasoning` + `qwen-chat-template` thinking format on both Gemma 4 entries in `models.json` (verified against Gemma 4 26B A4B: pi sends `chat_template_kwargs.enable_thinking: true`; Gemma emits a `<|channel>thought ... <channel|>` block; pi's qwen-chat-template handler strips it cleanly from visible output. Current-turn only — prior-turn thinking is still stripped by LM Studio per the 2026-05-10 note), synced the live append-style system prompt into the repo template (now `pi-config/APPEND_SYSTEM.md.example`, renamed from `SYSTEM.md.example`), and propagated the Gemma `reasoning`/`compat` fields into the README's `models.json` template block to match the live config, and added an **Error recovery** section to APPEND_SYSTEM.md (diagnose-before-retry, 2-retry cap, path verification, no sudo, simplify on JSON parse failure, abandon hung commands); later same day: added a `fetch` extension that registers an LLM-callable HTTP/HTTPS tool (GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, request body, default 256 KB response cap, hard 4 MB cap, 30 s timeout) so pi can read documentation pages, hit local services, and pull raw GitHub files without shelling out through bash + curl — added to `claude-mode` `ASK_TOOLS` so it survives a `/plan` → `/ask` toggle, deliberately excluded from `PLAN_TOOLS` (plan mode is local exploration only)
 
@@ -275,18 +275,6 @@ Pattern kinds:
 - `subpath` — match the full or trailing path.
 
 Set `"replace": true` to drop the built-in defaults entirely. Invalid entries are silently dropped; `/trust-paths` prints the active set and source.
-
-### `@juicesharp/rpiv-ask-user-question` package
-
-This [pi package](https://pi.dev/packages/@juicesharp/rpiv-ask-user-question) adds a custom provider that routes clarifying questions back to you during agent loops. Instead of guessing, the agent can ask.
-
-Add to `~/.pi/agent/settings.json`:
-
-```json
-{
-  "packages": ["npm:@juicesharp/rpiv-ask-user-question"]
-}
-```
 
 ### Skills
 
