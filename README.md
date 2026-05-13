@@ -2,7 +2,9 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode, two starter skills (`diagnose-tool-call-failure`, `checkpoint-recovery-walkthrough`) under `pi-config/skills/`, enabled `reasoning` + `qwen-chat-template` thinking format on both Gemma 4 entries in `models.json` (verified against Gemma 4 26B A4B: pi sends `chat_template_kwargs.enable_thinking: true`; Gemma emits a `<|channel>thought ... <channel|>` block; pi's qwen-chat-template handler strips it cleanly from visible output. Current-turn only — prior-turn thinking is still stripped by LM Studio per the 2026-05-10 note), synced the live append-style system prompt into the repo template (now `pi-config/APPEND_SYSTEM.md.example`, renamed from `SYSTEM.md.example`), and propagated the Gemma `reasoning`/`compat` fields into the README's `models.json` template block to match the live config, and added an **Error recovery** section to APPEND_SYSTEM.md (diagnose-before-retry, 2-retry cap, path verification, no sudo, simplify on JSON parse failure, abandon hung commands); later same day: added a `fetch` extension that registers an LLM-callable HTTP/HTTPS tool (GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, request body, default 256 KB response cap, hard 4 MB cap, 30 s timeout) so pi can read documentation pages, hit local services, and pull raw GitHub files without shelling out through bash + curl — added to `claude-mode` `ASK_TOOLS` so it survives a `/plan` → `/ask` toggle, deliberately excluded from `PLAN_TOOLS` (plan mode is local exploration only)
+**Last updated:** 2026-05-14 — added a `question` extension (vendored from the upstream pi example) that registers a `question` tool letting the agent pause mid-turn for user input — ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer, Esc cancels; headless `pi -p` returns an error result instead of blocking. Added to both `ASK_TOOLS` and `PLAN_TOOLS` (UI only, no side effects).
+
+Previous: 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode, two starter skills (`diagnose-tool-call-failure`, `checkpoint-recovery-walkthrough`) under `pi-config/skills/`, enabled `reasoning` + `qwen-chat-template` thinking format on both Gemma 4 entries in `models.json` (verified against Gemma 4 26B A4B: pi sends `chat_template_kwargs.enable_thinking: true`; Gemma emits a `<|channel>thought ... <channel|>` block; pi's qwen-chat-template handler strips it cleanly from visible output. Current-turn only — prior-turn thinking is still stripped by LM Studio per the 2026-05-10 note), synced the live append-style system prompt into the repo template (now `pi-config/APPEND_SYSTEM.md.example`, renamed from `SYSTEM.md.example`), and propagated the Gemma `reasoning`/`compat` fields into the README's `models.json` template block to match the live config, and added an **Error recovery** section to APPEND_SYSTEM.md (diagnose-before-retry, 2-retry cap, path verification, no sudo, simplify on JSON parse failure, abandon hung commands); later same day: added a `fetch` extension that registers an LLM-callable HTTP/HTTPS tool (GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, request body, default 256 KB response cap, hard 4 MB cap, 30 s timeout) so pi can read documentation pages, hit local services, and pull raw GitHub files without shelling out through bash + curl — added to `claude-mode` `ASK_TOOLS` so it survives a `/plan` → `/ask` toggle, deliberately excluded from `PLAN_TOOLS` (plan mode is local exploration only)
 
 Previous: 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
 
@@ -230,7 +232,7 @@ Pi auto-discovers `~/.pi/agent/extensions/*/index.ts` — no settings.json entry
 
 ### Additional extensions
 
-Five more extensions ship alongside claude-mode. All are in [`pi-config/extensions/`](./pi-config/extensions/) and use the same symlink pattern.
+Six more extensions ship alongside claude-mode. All are in [`pi-config/extensions/`](./pi-config/extensions/) and use the same symlink pattern.
 
 | Extension | What it does | Commands |
 |---|---|---|
@@ -239,11 +241,12 @@ Five more extensions ship alongside claude-mode. All are in [`pi-config/extensio
 | **todo-tracker** | `todo` tool for the LLM to manage a task list; status widget shows `done/total` | `/todos` |
 | **dirty-repo-guard** | Warns before session exit/switch/fork if working tree has uncommitted changes (no-op in `-p` / headless mode). Reports staged vs unstaged separately. Prompt offers "Checkpoint then proceed" to commit on the fly. | `/dirty` |
 | **fetch** | `fetch` tool for HTTP/HTTPS GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, request body, response cap (default 256 KB, hard cap 4 MB), and 30 s timeout. Used by the LLM directly instead of shelling out through bash + curl. http/https only; file:// is rejected. Added to `claude-mode` `ASK_TOOLS` so it survives `/plan` → `/ask`; intentionally excluded from `PLAN_TOOLS`. | _(no slash commands)_ |
+| **question** | `question` tool that pauses the agent mid-turn for user input. Full custom TUI: ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer. Esc cancels. Headless `pi -p` returns an error result instead of blocking. Vendored from the upstream pi example. Added to both `ASK_TOOLS` and `PLAN_TOOLS` — UI only, no side effects. | _(no slash commands)_ |
 
-Install all five:
+Install all six:
 
 ```fish
-for ext in git-checkpoint protected-paths todo-tracker dirty-repo-guard fetch;
+for ext in git-checkpoint protected-paths todo-tracker dirty-repo-guard fetch question;
   ln -sf ~/projects/pi-agent-config/pi-config/extensions/$ext ~/.pi/agent/extensions/$ext;
 end
 ```
