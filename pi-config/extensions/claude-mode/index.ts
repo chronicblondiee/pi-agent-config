@@ -14,7 +14,11 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const ASK_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+// Built-ins plus custom tools shipped in this repo. Keep aligned with any new
+// tools added under pi-config/extensions/ — claude-mode replaces the active
+// list wholesale on /plan|/ask|/yolo, so any tool name missing here vanishes
+// after the first mode toggle.
+const ASK_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "fetch"];
 const PLAN_TOOLS = ["read", "grep", "find", "ls"];
 const GATED = new Set(["bash", "write", "edit"]);
 
