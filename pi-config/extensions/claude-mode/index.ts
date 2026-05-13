@@ -18,8 +18,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 // tools added under pi-config/extensions/ — claude-mode replaces the active
 // list wholesale on /plan|/ask|/yolo, so any tool name missing here vanishes
 // after the first mode toggle.
-const ASK_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "fetch"];
-const PLAN_TOOLS = ["read", "grep", "find", "ls"];
+const ASK_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "fetch", "question"];
+const PLAN_TOOLS = ["read", "grep", "find", "ls", "question"];
 const GATED = new Set(["bash", "write", "edit"]);
 
 type Mode = "ask" | "plan" | "yolo";
