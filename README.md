@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions
+**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode
 
 Previous: 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
 
@@ -216,6 +216,7 @@ Pi has no built-in permission system or plan mode — both are deliberate non-fe
 - **`/yolo`** — disable the gate for the rest of the session (asks for one confirmation).
 - **`/ask`** — restore default gated behavior, clears any "always" memory.
 - **`/trust`** — print current mode and remembered allow-list.
+- **`/trust-tool <name>`** — pre-allow a single gated tool (`bash`, `edit`, or `write`) for the session without going through a prompt. `/untrust-tool <name>` revokes it.
 - Footer shows `[ask]` / `[plan]` / `[yolo]`. State resets every session.
 
 Install (one-time symlink so edits in this repo take effect live):
@@ -233,10 +234,10 @@ Four more extensions ship alongside claude-mode. All are in [`pi-config/extensio
 
 | Extension | What it does | Commands |
 |---|---|---|
-| **git-checkpoint** | Commits before each agent turn; offers restore on `/fork`. Note: rewrites your working-tree commits while pi runs — incompatible with `git add -p` workflows. | `/checkpoint`, `/checkpoints`, `/restore <sha>` |
-| **protected-paths** | Blocks writes to `.env*`, `.git/`, `node_modules/`, `.ssh/`, etc. (even in `/yolo` mode) | `/trust-paths`, `/unprotect <path>` |
+| **git-checkpoint** | Commits before each agent turn; offers restore on `/fork`. Note: rewrites your working-tree commits while pi runs — incompatible with `git add -p` workflows. Use `/checkpoint-off` to pause without unloading. | `/checkpoint`, `/checkpoints`, `/restore <sha>`, `/checkpoint-off`, `/checkpoint-on` |
+| **protected-paths** | Blocks writes to `.env*`, `.git/`, `node_modules/`, `.ssh/`, etc. (even in `/yolo` mode). Per-project extensions via `.pi/protected-paths.json` (see below) | `/trust-paths`, `/unprotect <path>` |
 | **todo-tracker** | `todo` tool for the LLM to manage a task list; status widget shows `done/total` | `/todos` |
-| **dirty-repo-guard** | Warns before session exit/switch/fork if working tree has uncommitted changes (no-op in `-p` / headless mode) | `/dirty` |
+| **dirty-repo-guard** | Warns before session exit/switch/fork if working tree has uncommitted changes (no-op in `-p` / headless mode). Reports staged vs unstaged separately. | `/dirty` |
 
 Install all four:
 
@@ -245,6 +246,30 @@ for ext in git-checkpoint protected-paths todo-tracker dirty-repo-guard;
   ln -sf ~/projects/pi-agent-config/pi-config/extensions/$ext ~/.pi/agent/extensions/$ext;
 end
 ```
+
+#### Per-project protected paths
+
+Drop a `.pi/protected-paths.json` in the project root to extend (or replace) the defaults — handy for protecting a specific build dir or local secrets file that the global defaults wouldn't catch.
+
+```json
+{
+  "replace": false,
+  "patterns": [
+    { "kind": "dir",      "name": "dist" },
+    { "kind": "exact",    "name": "credentials.json" },
+    { "kind": "subpath",  "path": "config/local.toml" },
+    { "kind": "dotPrefix","name": ".secrets" }
+  ]
+}
+```
+
+Pattern kinds:
+- `dir` — match any path segment by name (e.g. `dist/`, `node_modules/`).
+- `exact` — match the basename exactly.
+- `dotPrefix` — match the basename, or the basename + `.<anything>` (e.g. `.env` covers `.env.local`).
+- `subpath` — match the full or trailing path.
+
+Set `"replace": true` to drop the built-in defaults entirely. Invalid entries are silently dropped; `/trust-paths` prints the active set and source.
 
 ### `@juicesharp/rpiv-ask-user-question` package
 

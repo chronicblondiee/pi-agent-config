@@ -4,11 +4,20 @@
  * Blocks write/edit tool calls targeting sensitive files and directories.
  * Complements claude-mode by catching mistakes even in /yolo mode.
  *
+ * Per-project config: drop a `.pi/protected-paths.json` in the project
+ * root to extend (or replace) the defaults. Schema:
+ *   { "replace": false, "patterns": [ { "kind": "dir", "name": "dist" } ] }
+ * Pattern kinds: "dir" (any segment match), "exact" (basename match),
+ * "dotPrefix" (basename === name OR basename starts with name + "."),
+ * "subpath" (full or trailing path match).
+ *
  * Commands:
  *   /trust-paths       — list current protected patterns
  *   /unprotect <path>  — allow writes to a specific path (this session only)
  */
 
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 type Pattern =
@@ -41,6 +50,54 @@ const DEFAULT_PATTERNS: Pattern[] = [
   { kind: "exact", name: "id_ed25519" },
 ];
 
+function parsePattern(raw: unknown): Pattern | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const kind = typeof o.kind === "string" ? o.kind : null;
+  switch (kind) {
+    case "dir":
+    case "exact":
+    case "dotPrefix":
+      return typeof o.name === "string" && o.name.length > 0
+        ? ({ kind, name: o.name } as Pattern)
+        : null;
+    case "subpath":
+      return typeof o.path === "string" && o.path.length > 0
+        ? { kind: "subpath", path: o.path }
+        : null;
+    default:
+      return null;
+  }
+}
+
+async function loadProjectConfig(): Promise<{ patterns: Pattern[]; replace: boolean; source: string } | null> {
+  const path = resolve(process.cwd(), ".pi/protected-paths.json");
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { patterns: [], replace: false, source: `${path} (invalid JSON, ignored)` };
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return { patterns: [], replace: false, source: `${path} (not an object, ignored)` };
+  }
+  const cfg = parsed as Record<string, unknown>;
+  const replace = cfg.replace === true;
+  const rawList = Array.isArray(cfg.patterns) ? cfg.patterns : [];
+  const patterns: Pattern[] = [];
+  for (const raw of rawList) {
+    const p = parsePattern(raw);
+    if (p) patterns.push(p);
+  }
+  return { patterns, replace, source: path };
+}
+
 function describe(p: Pattern): string {
   switch (p.kind) {
     case "dir": return `${p.name}/`;
@@ -66,13 +123,39 @@ function matches(path: string, p: Pattern): boolean {
 }
 
 export default function (pi: ExtensionAPI): void {
-  const patterns = [...DEFAULT_PATTERNS];
+  let patterns: Pattern[] = [...DEFAULT_PATTERNS];
+  let configSource: string | null = null;
+  let configMode: "defaults" | "extended" | "replaced" = "defaults";
   const unprotected = new Set<string>();
 
   function isProtected(path: string): Pattern | null {
     if (unprotected.has(path)) return null;
     return patterns.find((p) => matches(path, p)) ?? null;
   }
+
+  pi.on("session_start", async (_event, ctx) => {
+    const cfg = await loadProjectConfig();
+    if (!cfg) {
+      patterns = [...DEFAULT_PATTERNS];
+      configMode = "defaults";
+      configSource = null;
+      return;
+    }
+    configSource = cfg.source;
+    if (cfg.replace) {
+      patterns = cfg.patterns.length ? [...cfg.patterns] : [...DEFAULT_PATTERNS];
+      configMode = cfg.patterns.length ? "replaced" : "defaults";
+    } else {
+      patterns = [...DEFAULT_PATTERNS, ...cfg.patterns];
+      configMode = cfg.patterns.length ? "extended" : "defaults";
+    }
+    if (ctx.hasUI && cfg.patterns.length) {
+      ctx.ui.notify(
+        `protected-paths: loaded ${cfg.patterns.length} pattern(s) from .pi/protected-paths.json (${configMode})`,
+        "info",
+      );
+    }
+  });
 
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName !== "write" && event.toolName !== "edit") return;
@@ -92,10 +175,10 @@ export default function (pi: ExtensionAPI): void {
   pi.registerCommand("trust-paths", {
     description: "Show protected path patterns",
     handler: async (_args, ctx) => {
-      const lines = [
-        `Protected patterns (${patterns.length}):`,
-        ...patterns.map((p) => `  - ${describe(p)}`),
-      ];
+      const header = configSource
+        ? `Protected patterns (${patterns.length}, ${configMode} from ${configSource}):`
+        : `Protected patterns (${patterns.length}, defaults only):`;
+      const lines = [header, ...patterns.map((p) => `  - ${describe(p)}`)];
       if (unprotected.size > 0) {
         lines.push("", `Unprotected this session (${unprotected.size}):`);
         for (const p of unprotected) lines.push(`  - ${p}`);

@@ -1,11 +1,13 @@
 /**
  * claude-mode: Claude-Code-style ergonomics for pi.dev.
  *
- * Adds a confirmation gate before bash/write/edit, plus four slash commands:
- *   /plan   - read-only mode (read, grep, find, ls only)
- *   /yolo   - disable the gate for this session
- *   /ask    - re-enable the gate (default at startup)
- *   /trust  - show current mode and remembered allow-list
+ * Adds a confirmation gate before bash/write/edit, plus slash commands:
+ *   /plan                - read-only mode (read, grep, find, ls only)
+ *   /yolo                - disable the gate for this session
+ *   /ask                 - re-enable the gate (default at startup)
+ *   /trust               - show current mode and remembered allow-list
+ *   /trust-tool <name>   - pre-allow a gated tool (bash|edit|write)
+ *   /untrust-tool <name> - revoke a pre-allowed tool
  *
  * State is per-session and resets on restart.
  */
@@ -36,7 +38,7 @@ export default function claudeModeExtension(pi: ExtensionAPI): void {
 
 		if (event.toolName === "bash") {
 			const command = String(event.input.command ?? "");
-			if (allowedCommands.has(command)) return;
+			if (allowedTools.has("bash") || allowedCommands.has(command)) return;
 			if (!ctx.hasUI) {
 				return { block: true, reason: "No UI to confirm bash; blocked." };
 			}
@@ -120,6 +122,42 @@ export default function claudeModeExtension(pi: ExtensionAPI): void {
 				`auto-allowed tools: ${tools.length ? tools.join(", ") : "(none)"}`,
 			];
 			ctx.ui.notify(lines.join("\n"), "info");
+		},
+	});
+
+	pi.registerCommand("trust-tool", {
+		description: "Auto-allow a gated tool for this session (bash|edit|write)",
+		handler: async (args, ctx) => {
+			const name = args?.trim();
+			if (!name) {
+				ctx.ui.notify("Usage: /trust-tool <bash|edit|write>", "warning");
+				return;
+			}
+			if (!GATED.has(name)) {
+				ctx.ui.notify(
+					`${name} is not gated. Gated tools: ${[...GATED].join(", ")}`,
+					"warning",
+				);
+				return;
+			}
+			allowedTools.add(name);
+			ctx.ui.notify(`Trusted ${name} for this session`, "warning");
+		},
+	});
+
+	pi.registerCommand("untrust-tool", {
+		description: "Revoke a session-trusted tool",
+		handler: async (args, ctx) => {
+			const name = args?.trim();
+			if (!name) {
+				ctx.ui.notify("Usage: /untrust-tool <name>", "warning");
+				return;
+			}
+			if (allowedTools.delete(name)) {
+				ctx.ui.notify(`Revoked trust for ${name}`, "info");
+			} else {
+				ctx.ui.notify(`${name} was not in the trust list`, "info");
+			}
 		},
 	});
 

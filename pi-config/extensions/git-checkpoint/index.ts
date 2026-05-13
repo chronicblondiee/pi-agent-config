@@ -7,13 +7,15 @@
  * resets the working tree to that checkpoint.
  *
  * Commands:
- *   /checkpoint   — manual checkpoint (commits current state)
- *   /checkpoints  — list recent checkpoints from this session
- *   /restore <sha> — reset working tree to a specific checkpoint
+ *   /checkpoint      — manual checkpoint (commits current state)
+ *   /checkpoints     — list recent checkpoints from this session
+ *   /restore <sha>   — reset working tree to a specific checkpoint
+ *   /checkpoint-off  — pause auto-checkpointing for this session
+ *   /checkpoint-on   — resume auto-checkpointing
  *
  * Caveat: this rewrites your commit history while pi is running. If you
  * use a staging-heavy workflow (interactive `git add -p`, etc.) outside
- * pi, disable this extension or expect your index to be repeatedly
+ * pi, run /checkpoint-off or expect your index to be repeatedly
  * flattened by `git add -A`.
  */
 
@@ -29,7 +31,14 @@ interface Checkpoint {
 export default function (pi: ExtensionAPI): void {
   const checkpoints = new Map<string, Checkpoint>();
   let inGitRepo = false;
+  let autoCheckpoint = true;
   let restoreProcessedFor: string | null = null;
+
+  function statusLabel(sha?: string): string {
+    if (!inGitRepo) return "not a git repo";
+    if (!autoCheckpoint) return sha ? `paused @ ${sha.slice(0, 8)}` : "paused";
+    return sha ? `checkpoint: ${sha.slice(0, 8)}` : "active";
+  }
 
   async function isGitRepo(): Promise<boolean> {
     try {
@@ -70,7 +79,7 @@ export default function (pi: ExtensionAPI): void {
       checkpoints.set(entryId, { entryId, sha, timestamp: Date.now(), message });
 
       if (ctx?.hasUI) {
-        ctx.ui.setStatus("git-checkpoint", `checkpoint: ${sha.slice(0, 8)}`);
+        ctx.ui.setStatus("git-checkpoint", statusLabel(sha));
       }
       return sha;
     } catch {
@@ -97,10 +106,8 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (event, ctx) => {
     inGitRepo = await isGitRepo();
-    if (!inGitRepo) {
-      if (ctx.hasUI) ctx.ui.setStatus("git-checkpoint", "not a git repo");
-      return;
-    }
+    if (ctx.hasUI) ctx.ui.setStatus("git-checkpoint", statusLabel());
+    if (!inGitRepo) return;
 
     // Only consume a pending restore request when this session_start is the
     // one *caused* by a fork, and only once per session lifetime. Otherwise
@@ -127,6 +134,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("turn_start", async (_event, ctx) => {
     if (!inGitRepo) return;
+    if (!autoCheckpoint) return;
     if (!(await hasChanges())) return;
 
     const leafId = ctx.sessionManager.getLeafId();
@@ -195,6 +203,24 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
       await restoreCheckpoint(args.trim(), ctx);
+    },
+  });
+
+  pi.registerCommand("checkpoint-off", {
+    description: "Pause auto-checkpointing for this session",
+    handler: async (_args, ctx) => {
+      autoCheckpoint = false;
+      if (ctx.hasUI) ctx.ui.setStatus("git-checkpoint", statusLabel());
+      ctx.ui.notify("Auto-checkpoint paused. /checkpoint still works manually.", "info");
+    },
+  });
+
+  pi.registerCommand("checkpoint-on", {
+    description: "Resume auto-checkpointing",
+    handler: async (_args, ctx) => {
+      autoCheckpoint = true;
+      if (ctx.hasUI) ctx.ui.setStatus("git-checkpoint", statusLabel());
+      ctx.ui.notify("Auto-checkpoint resumed", "info");
     },
   });
 }
