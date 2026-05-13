@@ -9,6 +9,13 @@
  * unstaged changes counts toward both — same file, two distinct
  * pending edits.
  *
+ * The prompt offers a third "Checkpoint then proceed" option that
+ * commits current state via `git add -A && git commit` (using the
+ * same `[pi-checkpoint] …` message prefix as git-checkpoint, so the
+ * resulting commit blends into `git log` consistently). This is
+ * independent of the git-checkpoint extension — it works even if
+ * that extension is not loaded.
+ *
  * Commands:
  *   /dirty   — check current working-tree state
  */
@@ -50,22 +57,54 @@ function summarize(c: DirtyCounts): string {
   return `${c.total} file(s)`;
 }
 
+async function commitCheckpoint(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  action: string,
+): Promise<boolean> {
+  try {
+    await pi.exec("git", ["add", "-A"]);
+    const ts = new Date().toISOString();
+    const { code } = await pi.exec("git", [
+      "commit",
+      "--allow-empty",
+      "-m",
+      `[pi-checkpoint] before ${action} (${ts})`,
+    ]);
+    if (code !== 0) {
+      ctx.ui.notify("Checkpoint failed", "error");
+      return false;
+    }
+    const { stdout } = await pi.exec("git", ["rev-parse", "HEAD"]);
+    ctx.ui.notify(`Checkpoint ${stdout.trim().slice(0, 8)} before ${action}`, "success");
+    return true;
+  } catch {
+    ctx.ui.notify("Checkpoint failed", "error");
+    return false;
+  }
+}
+
 async function guard(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   action: string,
 ): Promise<{ cancel: boolean } | undefined> {
   const counts = await inspectDirty(pi);
+  // total > 0 implies `git status` exited 0, so we're in a git repo and
+  // a commit is viable. No separate is-git-repo probe needed.
   if (counts.total === 0) return;
 
   // Without a UI we cannot ask the user — let the action through rather
   // than silently cancelling. Headless callers can check /dirty first.
   if (!ctx.hasUI) return;
 
-  const choice = await ctx.ui.select(
-    `${summarize(counts)}. ${action} anyway?`,
-    ["Yes, proceed anyway", "No, let me commit first"],
-  );
+  const options = ["Yes, proceed anyway", "Checkpoint then proceed", "No, let me commit first"];
+  const choice = await ctx.ui.select(`${summarize(counts)}. ${action} anyway?`, options);
+
+  if (choice === "Checkpoint then proceed") {
+    const ok = await commitCheckpoint(pi, ctx, action);
+    return ok ? undefined : { cancel: true };
+  }
 
   if (choice !== "Yes, proceed anyway") {
     ctx.ui.notify("Commit your changes first", "warning");
