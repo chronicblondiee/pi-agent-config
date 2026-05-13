@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode
+**Last updated:** 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode, and two starter skills (`diagnose-tool-call-failure`, `checkpoint-recovery-walkthrough`) under `pi-config/skills/`
 
 Previous: 2026-05-10 — added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries; pi requires both fields for thinking mode to actually fire over the OpenAI-compat (LM Studio) transport, otherwise `enable_thinking` is never sent in the request body and the model stays in non-thinking mode regardless of MLX/GGUF capability
 
@@ -281,6 +281,24 @@ Add to `~/.pi/agent/settings.json`:
 {
   "packages": ["npm:@juicesharp/rpiv-ask-user-question"]
 }
+```
+
+### Skills
+
+Pi auto-discovers [Agent Skills](https://agentskills.io/specification) from `~/.pi/agent/skills/<name>/SKILL.md`. Each skill exposes a `/skill:<name>` command, and the description is included in the system prompt so the model can decide when to load the full instructions.
+
+In-repo skills live at [`pi-config/skills/<name>/`](./pi-config/skills/) and are symlinked into the live location, same pattern as extensions:
+
+| Skill | What it covers |
+|---|---|
+| **diagnose-tool-call-failure** | Triage for malformed tool calls — wrong JSON, narration instead of calls, runaway output. Walks through chat template, APPEND_SYSTEM.md, models.json shape, context overflow, and falling back to Qwen. |
+| **checkpoint-recovery-walkthrough** | The git-checkpoint recovery flow: `/checkpoints` → pick SHA → `/restore` → verify, plus the cross-session fallback via `git log --grep="\[pi-checkpoint\]"`. |
+
+```fish
+mkdir -p ~/.pi/agent/skills
+for skill in diagnose-tool-call-failure checkpoint-recovery-walkthrough;
+  ln -sfn ~/projects/pi-agent-config/pi-config/skills/$skill ~/.pi/agent/skills/$skill;
+end
 ```
 
 ---
