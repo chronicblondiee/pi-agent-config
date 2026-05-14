@@ -124,6 +124,11 @@ const ForgetParams = Type.Object({
 });
 
 export default function sessionMemoryExtension(pi: ExtensionAPI): void {
+  // Capture cwd once so reads and writes stay consistent even if the
+  // pi process's cwd shifts later in the session. Seeded at extension
+  // load and refreshed on each session_start (new / resume / fork).
+  let sessionCwd = resolve(process.cwd());
+
   pi.registerTool({
     name: "remember",
     label: "Remember",
@@ -134,6 +139,7 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use `remember` for facts that should outlive this session: stable project conventions, user preferences expressed during this conversation, decisions that future-you would want to know but couldn't infer from git history.",
       "Do NOT use `remember` for transient task state (use `todo` for that), code patterns visible in the source, or anything already in CLAUDE.md/AGENTS.md/READMEs — read those instead of duplicating them in memory.",
+      "Before saving, scan the `## Session memory` block already in your system prompt. If an existing entry covers the same fact, do not save a duplicate — call `forget` and re-save only if you need to rewrite the wording.",
       "Keep bodies concise — 1-2 sentences, lead with the fact, include the why if it's load-bearing.",
       "If a fact turns out to be wrong or outdated, call `forget` with its id; don't leave stale entries sitting in memory.",
     ],
@@ -147,11 +153,22 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
           details: { ok: false, reason: "empty" },
         };
       }
-      const cwd = process.cwd();
-      const memory = loadMemory(cwd);
+      const memory = loadMemory(sessionCwd);
+      const existing = memory.entries.find((e) => e.body === body);
+      if (existing) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Already remembered as [${existing.id}] — not saving a duplicate.`,
+            },
+          ],
+          details: { ok: true, id: existing.id, duplicate: true, total: memory.entries.length },
+        };
+      }
       const id = nextId(memory.entries);
       memory.entries.push({ id, ts: Date.now(), body });
-      saveMemory(cwd, memory);
+      saveMemory(sessionCwd, memory);
       return {
         content: [
           {
@@ -177,8 +194,7 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
     parameters: ForgetParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const cwd = process.cwd();
-      const memory = loadMemory(cwd);
+      const memory = loadMemory(sessionCwd);
       const idx = memory.entries.findIndex((e) => e.id === params.id);
       if (idx === -1) {
         return {
@@ -187,7 +203,7 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
         };
       }
       const [removed] = memory.entries.splice(idx, 1);
-      saveMemory(cwd, memory);
+      saveMemory(sessionCwd, memory);
       return {
         content: [
           {
@@ -203,18 +219,17 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
   pi.registerCommand("memory", {
     description: "Show persistent memory for the current project",
     handler: async (_args, ctx) => {
-      const cwd = process.cwd();
-      const memory = loadMemory(cwd);
+      const memory = loadMemory(sessionCwd);
       if (memory.entries.length === 0) {
         ctx.ui.notify(
-          `No memory entries for ${memory.path}\nFile would be: ${memoryFileFor(cwd)}`,
+          `No memory entries for ${memory.path}\nFile would be: ${memoryFileFor(sessionCwd)}`,
           "info",
         );
         return;
       }
       const lines = [
         `Memory for ${memory.path}`,
-        `(${memory.entries.length} entr${memory.entries.length === 1 ? "y" : "ies"}, file ${memoryFileFor(cwd)})`,
+        `(${memory.entries.length} entr${memory.entries.length === 1 ? "y" : "ies"}, file ${memoryFileFor(sessionCwd)})`,
         "",
         ...memory.entries.map((e) => `[${e.id}] ${e.body}`),
       ];
@@ -225,22 +240,26 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
   pi.registerCommand("memory-clear", {
     description: "Wipe persistent memory for the current project",
     handler: async (_args, ctx) => {
-      const cwd = process.cwd();
-      const memory = loadMemory(cwd);
+      if (!ctx.hasUI) {
+        ctx.ui.notify(
+          "Refusing to /memory-clear without a UI to confirm. Edit the memory JSON directly if you need a non-interactive wipe.",
+          "warning",
+        );
+        return;
+      }
+      const memory = loadMemory(sessionCwd);
       if (memory.entries.length === 0) {
         ctx.ui.notify(`No memory entries to clear for ${memory.path}`, "info");
         return;
       }
-      if (ctx.hasUI) {
-        const ok = await ctx.ui.confirm(
-          "Clear memory?",
-          `Delete all ${memory.entries.length} entries for ${memory.path}? This cannot be undone.`,
-        );
-        if (!ok) return;
-      }
+      const ok = await ctx.ui.confirm(
+        "Clear memory?",
+        `Delete all ${memory.entries.length} entries for ${memory.path}? This cannot be undone.`,
+      );
+      if (!ok) return;
       const cleared = memory.entries.length;
       memory.entries = [];
-      saveMemory(cwd, memory);
+      saveMemory(sessionCwd, memory);
       ctx.ui.notify(`Cleared ${cleared} memory entries for ${memory.path}`, "warning");
     },
   });
@@ -253,11 +272,10 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
         ctx.ui.notify("Usage: /remember <note text>", "warning");
         return;
       }
-      const cwd = process.cwd();
-      const memory = loadMemory(cwd);
+      const memory = loadMemory(sessionCwd);
       const id = nextId(memory.entries);
       memory.entries.push({ id, ts: Date.now(), body: body.slice(0, MAX_BODY_CHARS) });
-      saveMemory(cwd, memory);
+      saveMemory(sessionCwd, memory);
       ctx.ui.notify(
         `Saved entry [${id}] (${memory.entries.length} total for ${memory.path})`,
         "info",
@@ -266,14 +284,15 @@ export default function sessionMemoryExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", async (event, _ctx) => {
-    const memory = loadMemory(process.cwd());
+    const memory = loadMemory(sessionCwd);
     if (memory.entries.length === 0) return undefined;
     const block = formatMemoryForPrompt(memory);
     return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    const memory = loadMemory(process.cwd());
+    sessionCwd = resolve(process.cwd());
+    const memory = loadMemory(sessionCwd);
     if (memory.entries.length === 0) return;
     ctx.ui.notify(
       `session-memory: ${memory.entries.length} entr${memory.entries.length === 1 ? "y" : "ies"} loaded for ${memory.path}`,
