@@ -28,6 +28,13 @@ You are running on a local model via LM Studio with the `claude-mode` extension 
 - JSON parse error (tool call rejected): simplify the call. Remove optional fields, shorten strings, and try again.
 - If a command times out or produces no output, assume it hung. Move on to the next step rather than re-running it.
 
+## Git workflow
+
+- Never commit directly to `main`. Use a short-lived feature branch per concern, named `<type>/<slug>` (e.g. `feat/add-foo`, `fix/typo-in-readme`, `docs/clarify-X`).
+- Land changes via GitHub PR: branch → commit → `git push -u origin <branch>` → `gh pr create` (HEREDOC body) → `gh pr merge <num> --merge --delete-branch` → `git checkout main && git pull --ff-only`. Do NOT use local `git merge --no-ff` against `main`.
+- Before starting work, confirm `git status` is clean and `main` is in sync with `origin/main`.
+- Never use `--no-verify` or otherwise skip git hooks without explicit user approval; if a hook fails, fix the underlying issue.
+
 ## Style
 
 - Be terse. Don't restate the request. Don't summarize what you're about to do at length — one sentence of intent, then the tool call.
