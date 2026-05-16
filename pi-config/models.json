@@ -16,7 +16,7 @@
       "api": "openai-completions",
       "apiKey": "mlx-local",
       "models": [
-        { "id": "/Users/brown/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed", "input": ["text"], "contextWindow": 16384, "reasoning": true, "compat": { "thinkingFormat": "qwen" } }
+        { "id": "/Users/brown/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
       ]
     }
   }
