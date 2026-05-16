@@ -2,7 +2,9 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-14 — added a `question` extension (vendored from the upstream pi example) that registers a `question` tool letting the agent pause mid-turn for user input — ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer, Esc cancels; headless `pi -p` returns an error result instead of blocking. Added to both `ASK_TOOLS` and `PLAN_TOOLS` (UI only, no side effects); later same day: added an `ast-grep` extension that wraps the [ast-grep](https://ast-grep.github.io/) CLI as an LLM-callable tool for structural (tree-sitter AST) code search with meta-variable captures (`$NAME`, `$$$ARGS`), `--json=stream` parsing, default 200-match cap (hard cap 1000), 30 s timeout, and `--rewrite` deliberately not exposed (use `edit`/`write` to keep claude-mode's gate in the loop). Added to both `ASK_TOOLS` and `PLAN_TOOLS` (read-only); later same day: dropped the stale `@juicesharp/rpiv-ask-user-question` package section — the in-repo `question` extension supersedes it and the package is not installed; later same day: added a `test` extension that registers a `test` tool wrapping the project's test runner. Auto-detects pytest / vitest / jest / cargo / go from filesystem markers and returns structured output (exit code, parsed `{file, line, message}` failures, duration, captured stdout/stderr capped at 256 KB). Supports `filter`, `path`, `timeout_ms` (default 5 min, hard cap 30 min); deliberately no free-form `command` parameter — use `bash` for non-standard test commands. Added to `ASK_TOOLS` only (not `PLAN_TOOLS` — plan mode is read-only exploration); later same day: added a `session-memory` extension that closes the "pi sessions are amnesic" gap with `remember` / `forget` tools backed by per-project JSON at `~/.pi/agent/memory/<slug>.json`. Entries are injected into the system prompt every turn via `before_agent_start`, so they survive compaction and new sessions from the same cwd. Tools added to both `ASK_TOOLS` and `PLAN_TOOLS` (writes go into `~/.pi/agent/memory/`, never the project itself). Slash commands `/memory`, `/memory-clear`, `/remember <text>` round out the user-facing surface; later same day: added a **Git workflow** section to APPEND_SYSTEM.md encoding the branch-per-change → `gh pr create` → `gh pr merge --merge --delete-branch` flow so pi.dev sessions follow it without re-learning each time. Live file synced from `pi-config/APPEND_SYSTEM.md.example` with `.bak.2026-05-14` of the prior version kept alongside.
+**Last updated:** 2026-05-16 — added a **Mac alternative — mlx_lm.server on M1 Pro 32 GB** section between the CachyOS LM Studio load params and the pi.dev integration block. Later same day: ported the `mlx-server` wrapper to portable bash at [`scripts/mlx-server.sh`](./scripts/mlx-server.sh) (lifted out of `pi-config/scripts/` to the repo root since it's a runtime helper, not pi-agent configuration — identical behavior to the fish version, targets stock macOS `bash 3.2`, no associative arrays, honors `MLX_SERVER_{VENV,STATE_DIR,HOST,PORT}` env overrides) and reformatted the install snippets in the Mac section from fish to bash so they work on systems without fish; later same day: aligned the `mlx-local` provider entry in `pi-config/models.json` (and the matching README example) so its `id` is `Qwen3.6-27B-MTPLX-Optimized-Speed` — the directory basename that `mlx_lm.server` reports when the wrapper's default model is loaded — so out-of-the-box `mlx-server start` + default `models.json` route correctly without manual editing (still verify with `curl -s http://localhost:8080/v1/models | jq` after first load). Background: LM Studio's bundled MLX runtime (`app-mlx-generate-mac14-arm64@25`, ships `mlx_vlm 0.4.5`) doesn't yet recognize Qwen3.6's MTP architecture — loads fail with `Received N parameters not in model: mtp.*`. The new section documents a `uv`-managed env running public `mlx-lm` 0.31.3 + `mlx_lm.server` as a parallel OpenAI-compatible endpoint on `localhost:8080`, with an `mlx-local` provider added to `pi-config/models.json` alongside (not replacing) the existing CachyOS `lmstudio` entry. All Mac throughput/VRAM/context numbers are intentionally left as **needs measurement** per the CLAUDE.md "don't generalize from 7900 XTX" guardrail — pending first real load on M1 Pro 32 GB. MTPLX is flagged as a future option but currently unusable (requires ≥48 GiB unified memory). Same day: added [`pi-config/scripts/mlx-server.fish`](./pi-config/scripts/mlx-server.fish), a `start|stop|restart|status|log|list` wrapper around `mlx_lm.server` with a small hardcoded model registry (defaults to `qwen3.6-27b` → `~/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed`); installs via symlink into `~/.local/bin/mlx-server`, state under `~/.local/state/mlx-server/`. Also noted that LM Studio's existing MLX downloads can be reused as-is by pointing `--model` at the `~/.lmstudio/models/<pub>/<name>/` path — no duplication needed — and that the Youssofal MTPLX directory works under plain `mlx-lm` because the MTP weights live in an unindexed `mtp.safetensors` that the standard loader silently skips (so a working Qwen3.6 27B is already on disk without re-downloading).
+
+Previous: 2026-05-14 — added a `question` extension (vendored from the upstream pi example) that registers a `question` tool letting the agent pause mid-turn for user input — ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer, Esc cancels; headless `pi -p` returns an error result instead of blocking. Added to both `ASK_TOOLS` and `PLAN_TOOLS` (UI only, no side effects); later same day: added an `ast-grep` extension that wraps the [ast-grep](https://ast-grep.github.io/) CLI as an LLM-callable tool for structural (tree-sitter AST) code search with meta-variable captures (`$NAME`, `$$$ARGS`), `--json=stream` parsing, default 200-match cap (hard cap 1000), 30 s timeout, and `--rewrite` deliberately not exposed (use `edit`/`write` to keep claude-mode's gate in the loop). Added to both `ASK_TOOLS` and `PLAN_TOOLS` (read-only); later same day: dropped the stale `@juicesharp/rpiv-ask-user-question` package section — the in-repo `question` extension supersedes it and the package is not installed; later same day: added a `test` extension that registers a `test` tool wrapping the project's test runner. Auto-detects pytest / vitest / jest / cargo / go from filesystem markers and returns structured output (exit code, parsed `{file, line, message}` failures, duration, captured stdout/stderr capped at 256 KB). Supports `filter`, `path`, `timeout_ms` (default 5 min, hard cap 30 min); deliberately no free-form `command` parameter — use `bash` for non-standard test commands. Added to `ASK_TOOLS` only (not `PLAN_TOOLS` — plan mode is read-only exploration); later same day: added a `session-memory` extension that closes the "pi sessions are amnesic" gap with `remember` / `forget` tools backed by per-project JSON at `~/.pi/agent/memory/<slug>.json`. Entries are injected into the system prompt every turn via `before_agent_start`, so they survive compaction and new sessions from the same cwd. Tools added to both `ASK_TOOLS` and `PLAN_TOOLS` (writes go into `~/.pi/agent/memory/`, never the project itself). Slash commands `/memory`, `/memory-clear`, `/remember <text>` round out the user-facing surface; later same day: added a **Git workflow** section to APPEND_SYSTEM.md encoding the branch-per-change → `gh pr create` → `gh pr merge --merge --delete-branch` flow so pi.dev sessions follow it without re-learning each time. Live file synced from `pi-config/APPEND_SYSTEM.md.example` with `.bak.2026-05-14` of the prior version kept alongside.
 
 Previous: 2026-05-13 — added four new extensions (`git-checkpoint`, `protected-paths`, `todo-tracker`, `dirty-repo-guard`) and the `@juicesharp/rpiv-ask-user-question` package for mid-loop user questions; later same day: `/checkpoint-off`/`/checkpoint-on` for git-checkpoint, `.pi/protected-paths.json` per-project config for protected-paths, staged/unstaged split + "checkpoint then proceed" option in dirty-repo-guard, `/trust-tool`/`/untrust-tool` for claude-mode, two starter skills (`diagnose-tool-call-failure`, `checkpoint-recovery-walkthrough`) under `pi-config/skills/`, enabled `reasoning` + `qwen-chat-template` thinking format on both Gemma 4 entries in `models.json` (verified against Gemma 4 26B A4B: pi sends `chat_template_kwargs.enable_thinking: true`; Gemma emits a `<|channel>thought ... <channel|>` block; pi's qwen-chat-template handler strips it cleanly from visible output. Current-turn only — prior-turn thinking is still stripped by LM Studio per the 2026-05-10 note), synced the live append-style system prompt into the repo template (now `pi-config/APPEND_SYSTEM.md.example`, renamed from `SYSTEM.md.example`), and propagated the Gemma `reasoning`/`compat` fields into the README's `models.json` template block to match the live config, and added an **Error recovery** section to APPEND_SYSTEM.md (diagnose-before-retry, 2-retry cap, path verification, no sudo, simplify on JSON parse failure, abandon hung commands); later same day: added a `fetch` extension that registers an LLM-callable HTTP/HTTPS tool (GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, request body, default 256 KB response cap, hard 4 MB cap, 30 s timeout) so pi can read documentation pages, hit local services, and pull raw GitHub files without shelling out through bash + curl — added to `claude-mode` `ASK_TOOLS` so it survives a `/plan` → `/ask` toggle, deliberately excluded from `PLAN_TOOLS` (plan mode is local exploration only)
 
@@ -137,6 +139,148 @@ Of the four, this one is closest to the VRAM ceiling. Watch for ROCm OOM mid-gen
 
 ---
 
+## Mac alternative — mlx_lm.server on M1 Pro 32 GB
+
+> **CachyOS workstation users — skip this section.** Everything above and below stays unchanged on the 7900 XTX setup. This section only applies when running pi against a Mac.
+
+### Why this exists
+
+LM Studio's bundled MLX runtime (`~/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac14-arm64@25/`, ships `mlx_vlm 0.4.5`) doesn't yet recognize Qwen3.6's MTP layers. Loading any Qwen3.6 MLX build through LM Studio currently fails with:
+
+```
+ValueError: Received 29 parameters not in model:
+mtp.fc.weight, mtp.layers.0.input_layernorm.weight, ...
+```
+
+The wrapper version `mlx-llm-...-1.8.1` shipped 2026-05-16 still pins to the same `@25` vendor lib, so this is fixed only by a future `@26`-style vendor bump. Until then, the Mac path runs the public `mlx-lm` directly under a `uv`-managed env and serves it via `mlx_lm.server`, then points pi at the new endpoint as a second OpenAI-compatible provider.
+
+### Hardware profile
+
+Apple M1 Pro, 32 GB unified memory, macOS 14+. **All numbers in this section are _needs measurement_ — do not extrapolate from the 7900 XTX tables above.**
+
+### Build a uv-managed env
+
+`uv` is the standard Python toolchain on macOS; this keeps the runtime separate from system Python and trivially reproducible.
+
+```bash
+# One-time install
+brew install uv
+
+# Create the env (project-local; lives outside this repo)
+uv venv ~/projects/mac-mlx-env --python 3.11
+
+# Install mlx-lm directly into that env (no shell-activation needed) — 0.31.3+
+# has Qwen3.5 architecture support; Qwen3.6 mostly loads via overlap (the MTP
+# heads are silently ignored, which is fine — no speculative decoding, just
+# standard autoregressive decode)
+uv pip install --python ~/projects/mac-mlx-env/bin/python -U mlx-lm
+```
+
+If you want an interactive activation instead, use the shell-specific entry point:
+
+```bash
+# bash / zsh
+source ~/projects/mac-mlx-env/bin/activate
+```
+
+```fish
+# fish
+source ~/projects/mac-mlx-env/bin/activate.fish
+```
+
+### Launch the server via the wrapper script
+
+Two equivalent wrappers ship in this repo, identical in behavior — pick the one for your shell:
+
+- [`scripts/mlx-server.sh`](./scripts/mlx-server.sh) — portable bash (targets the stock `bash 3.2` on macOS; works on any POSIX-ish shell that can exec bash).
+- [`pi-config/scripts/mlx-server.fish`](./pi-config/scripts/mlx-server.fish) — fish-native equivalent.
+
+Both bundle `start`/`stop`/`restart`/`status`/`log`/`list` subcommands so the server can be brought up without remembering the full `mlx_lm.server` invocation. Install one of them via symlink:
+
+```bash
+mkdir -p ~/.local/bin
+
+# bash / zsh users (default — recommended for portability)
+ln -sf ~/projects/pi-agent-config/scripts/mlx-server.sh ~/.local/bin/mlx-server
+
+# fish users (alternative)
+# ln -sf ~/projects/pi-agent-config/pi-config/scripts/mlx-server.fish ~/.local/bin/mlx-server
+
+# ensure ~/.local/bin is on PATH (bash/zsh):
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  export PATH="$HOME/.local/bin:$PATH"
+;; esac
+```
+
+Fish users can use `fish_add_path -U ~/.local/bin` instead of the `case` block above.
+
+Daily use:
+
+```bash
+mlx-server start                  # default model (qwen3.6-27b — Youssofal MTPLX dir)
+mlx-server start qwen3.5-9b       # switch to the smaller registered model
+mlx-server start /path/to/model   # ad-hoc, any MLX safetensors dir
+mlx-server status                 # is it running and bound to :8080?
+mlx-server log                    # tail server log (Ctrl-C to exit)
+mlx-server stop
+mlx-server restart qwen3.6-27b
+mlx-server list                   # show configured models, marks default
+```
+
+State is kept in `~/.local/state/mlx-server/` (pidfile + log). The script backgrounds the server with `disown`, so it survives the terminal that launched it. Defaults: `127.0.0.1:8080`, model registry hardcoded in the script — edit the `_resolve_model` case statement (bash) or `MODELS` map (fish) to register new entries. The bash version also honors `MLX_SERVER_VENV`, `MLX_SERVER_STATE_DIR`, `MLX_SERVER_HOST`, and `MLX_SERVER_PORT` env overrides.
+
+Under the hood it runs:
+
+```bash
+$VENV/bin/mlx_lm.server --model <resolved-path> --host 127.0.0.1 --port 8080
+```
+
+For the raw command (debugging or one-offs), call that directly with the venv activated.
+
+After the server is listening, verify the id pi will see:
+
+```bash
+curl -s http://localhost:8080/v1/models | jq
+```
+
+That id is what must appear in `models.json` — `mlx_lm.server` typically reports the model directory's basename (e.g. `Qwen3.6-27B-MTPLX-Optimized-Speed`) or the HF repo id, depending on how it was loaded. Correct the `mlx-local` provider entry if the reported id doesn't match.
+
+### Model picks for 32 GB unified memory
+
+| Model | Size on disk | Fits 32 GB? | Notes |
+|---|---|---|---|
+| `mlx-community/Qwen3.6-35B-A3B-4bit` | ~22 GB | ✅ recommended | MoE 3B active; parallels the CachyOS A3B entry but without MTP speculative decoding |
+| `unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit` | ~22 GB | ✅ alternative | Unsloth Dynamic quant; better quality at same bits, but watch for arch-detection issues in mlx-lm |
+| `unsloth/Qwen3.6-27B-UD-MLX-4bit` | ~26 GB | ⚠ tight | Dense; leaves ~4 GB for KV cache + OS, will likely swap on long contexts |
+| `unsloth/Qwen3.6-27B-MLX-8bit` | ~28 GB | ❌ skip | No usable headroom |
+
+### MTPLX — future option, currently unusable
+
+[MTPLX](https://github.com/youssofal/MTPLX) is a native MTP-aware MLX runtime claiming ~2.24× decode TPS on Qwen3.6 27B by actually executing the MTP heads as a built-in speculative decoder. It also exposes an OpenAI-compatible server, so it would slot into the same `mlx-local` provider shape.
+
+**Cannot be used on this M1 Pro 32 GB** — MTPLX requires a minimum of **48 GiB unified memory** (warns below that floor; refuses to run above 80% utilization). Revisit when/if the host machine is upgraded.
+
+### Measurements pending
+
+| Quantity | Value | How to measure |
+|---|---|---|
+| Wall RAM at idle (model loaded, no context) | _needs measurement_ | `vm_stat` + Activity Monitor after server is listening |
+| Max usable context length | _needs measurement_ | Start at 16384, send increasing-length prompts until throughput collapses |
+| Decode tok/s @ 4096 ctx | _needs measurement_ | `mlx_lm.server` returns timing in `usage.timings` if `--log-level info`; otherwise wall-clock a fixed-length completion |
+| Decode tok/s @ 32768 ctx | _needs measurement_ | same |
+| Pi auto-compaction threshold | follows `contextWindow` in models.json (currently 16384) | bump after first measurement run |
+
+When real numbers are in hand, replace this table and bump `contextWindow` in `pi-config/models.json` accordingly.
+
+### Pi usage notes
+
+- Switch to the Mac provider with `/model` and pick the `mlx-local` entry.
+- `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
+- `mlx_lm.server` doesn't currently support a `--draft-model` flag for speculative decoding, so the speed parity with the CachyOS workstation's LM Studio entry won't be achieved here until MTPLX (or LM Studio's `@26` vendor lib) lands.
+
+---
+
 ## pi.dev integration
 
 ### Install reminder
@@ -170,12 +314,20 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
         { "id": "google/gemma-4-26b-a4b",    "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } },
         { "id": "google/gemma-4-31b",        "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } }
       ]
+    },
+    "mlx-local": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "mlx-local",
+      "models": [
+        { "id": "Qwen3.6-27B-MTPLX-Optimized-Speed", "input": ["text"], "contextWindow": 16384, "reasoning": true, "compat": { "thinkingFormat": "qwen" } }
+      ]
     }
   }
 }
 ```
 
-The `id` strings must match the model id LM Studio reports at `GET http://localhost:1234/v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` after loading a model.
+The `id` strings must match the model id the server reports at `GET /v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` (LM Studio, CachyOS) or `curl -s http://localhost:8080/v1/models | jq` (mlx_lm.server, Mac) after loading a model. See **Mac alternative — mlx_lm.server on M1 Pro 32 GB** for setting up the second endpoint.
 
 `contextWindow` must match the **Context Length** you set in LM Studio's load dialog for that model (see "Per-model deltas" below). Pi defaults to 128000 if omitted, which means auto-compaction won't fire until well past the model's actual loaded context — and LM Studio will silently truncate the prompt instead. If you change a model's context in LM Studio, change it here too. Verify with `pi --list-models`.
 
