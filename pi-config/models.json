@@ -16,7 +16,7 @@
       "api": "openai-completions",
       "apiKey": "mlx-local",
       "models": [
-        { "id": "mlx-community/Qwen3.6-35B-A3B-4bit", "input": ["text"], "contextWindow": 16384, "reasoning": true, "compat": { "thinkingFormat": "qwen" } }
+        { "id": "Qwen3.6-27B-MTPLX-Optimized-Speed", "input": ["text"], "contextWindow": 16384, "reasoning": true, "compat": { "thinkingFormat": "qwen" } }
       ]
     }
   }

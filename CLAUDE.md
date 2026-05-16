@@ -13,6 +13,7 @@ A personal **reference + config-template repo** — not a software project. Ther
   - `models.json`, `SYSTEM.md.example` — reference copies; live versions at `~/.pi/agent/`.
   - `extensions/claude-mode/` — actual TypeScript source for the confirmation-gate + plan-mode extension. **Symlinked** into `~/.pi/agent/extensions/claude-mode` so edits here take effect live (different pattern from the copy-based templates above; this is real code under development, not a one-off config).
 - `lmstudio-presets/` — placeholder for LM Studio per-model preset snapshots. The **live** presets live at `~/.lmstudio/.internal/user-concrete-model-default-config/<model-id>.json`. The repo's `lmstudio-presets/README.md` documents the backup recipe; actual snapshots are not currently checked in.
+- `scripts/` — portable runtime helpers (not pi-agent configuration). Currently holds `mlx-server.sh`, a bash port of `pi-config/scripts/mlx-server.fish` that wraps `mlx_lm.server` for the Mac MLX provider. Lives at the repo root rather than under `pi-config/` because it's a system-level helper, not a pi.dev artifact. Install via symlink into `~/.local/bin/mlx-server`.
 
 When the user asks to "update the config," clarify whether they mean the template in this repo, the live config under `~/.pi/` or `~/.lmstudio/`, or both.
 
