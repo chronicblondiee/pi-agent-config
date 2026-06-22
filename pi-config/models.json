@@ -11,7 +11,7 @@
             "text",
             "image"
           ],
-          "contextWindow": 65536,
+          "contextWindow": 131072,
           "reasoning": true,
           "name": "Qwen3.5 9B Coder",
           "compat": {
