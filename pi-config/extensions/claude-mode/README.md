@@ -19,7 +19,7 @@ A `[ask]` indicator appears in the footer.
 | `/plan` | Read-only mode. Active tools restricted to `read, grep, find, ls`. `bash/write/edit` are removed from the model's tool list AND the gate blocks them defensively. Footer shows `[plan]`. |
 | `/yolo` | Disable the gate for this session. Asks for one confirmation first. Footer shows `[yolo]`. |
 | `/ask`  | Restore default behavior. Clears any remembered "always" choices. Footer shows `[ask]`. |
-| `/trust` | Print current mode and the auto-allow lists. |
+| `/trust-status` | Print current mode and the auto-allow lists. |
 
 State resets on every session start — there is no persistence. By design: the safe default should be re-asserted every launch.
 
@@ -43,7 +43,7 @@ npm init -y && npm i -D @earendil-works/pi-coding-agent
 
 ## Verifying it loaded
 
-Inside pi, type `/` and look for `plan`, `yolo`, `ask`, `trust` in the autocomplete. Or check the footer for `[ask]`.
+Inside pi, type `/` and look for `plan`, `yolo`, `ask`, `trust-status`, `trust-tool`, and `untrust-tool` in the autocomplete. Or check the footer for `[ask]`.
 
 If something goes wrong, pi reports extension load errors in `/tree` (Esc Esc).
 

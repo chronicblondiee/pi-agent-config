@@ -5,7 +5,7 @@
  *   /plan                - read-only mode (read, grep, find, ls only)
  *   /yolo                - disable the gate for this session
  *   /ask                 - re-enable the gate (default at startup)
- *   /trust               - show current mode and remembered allow-list
+ *   /trust-status        - show current mode and remembered allow-list
  *   /trust-tool <name>   - pre-allow a gated tool (bash|edit|write)
  *   /untrust-tool <name> - revoke a pre-allowed tool
  *
@@ -114,7 +114,7 @@ export default function claudeModeExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("trust", {
+	pi.registerCommand("trust-status", {
 		description: "Show current mode and remembered allow-list",
 		handler: async (_args, ctx) => {
 			const cmds = [...allowedCommands];
