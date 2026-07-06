@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-05-16 — see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-06 — added the Mac `llamacpp` provider (Odysseus llama-server), synced `pi-config/models.json` with the live Mac config; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -329,6 +329,15 @@ The `id` strings must match the model id the server reports at `GET /v1/models` 
 
 `contextWindow` must match the **Context Length** you set in LM Studio's load dialog for that model (see "Per-model deltas" below). Pi defaults to 128000 if omitted, which means auto-compaction won't fire until well past the model's actual loaded context — and LM Studio will silently truncate the prompt instead. If you change a model's context in LM Studio, change it here too. Verify with `pi --list-models`.
 
+### Mac `llamacpp` provider (Odysseus llama-server)
+
+The Mac config also carries a `llamacpp` provider pointing at a raw `llama-server` on `http://localhost:8000/v1` — the process Odysseus's Cookbook serves (currently `google/gemma-4-12B-it-qat-q4_0-gguf`, started with `-c 131072`, no `--mmproj` so **text-only**). Notes that differ from the other providers:
+
+- llama.cpp serves **one fixed model per process** and **ignores the request `model` field**, so the "id must match `GET /v1/models`" rule does not apply here — the entry uses the cosmetic id `gemma-4-12b-it-qat-q4_0` (the server actually reports the full GGUF path, since `llama-server` has no `--alias` in this launch).
+- `contextWindow` must mirror whatever `-c` the server was started with, same reasoning as the LM Studio entries.
+- The server is **not always running** — start it from Odysseus (Cookbook → serve) or directly with the same flags. `curl -s http://localhost:8000/health` to check.
+- Verified 2026-07-06: `pi --provider llamacpp --model gemma-4-12b-it-qat-q4_0 -p "Reply with exactly: ok"` returns a clean `ok`, no leaked reasoning tags. The `qwen-code-llamacpp` wrapper in `~/mlx-local-llm` targets the same endpoint for Qwen Code.
+
 ### Switching models inside pi
 
 - `/model` slash command in the REPL, or
@@ -446,6 +455,19 @@ for skill in diagnose-tool-call-failure checkpoint-recovery-walkthrough;
 end
 ```
 
+### External packages
+
+Beyond the in-repo extensions/skills above, the live setup installs these npm packages via `pi install` (recorded in `~/.pi/agent/settings.json` under `packages`):
+
+```bash
+pi install npm:@pi-archimedes/todo && \
+pi install npm:pi-gitnexus && \
+pi install npm:@tintinweb/pi-tasks && \
+pi install npm:@tintinweb/pi-subagents && \
+pi install npm:pi-codex-goal && \
+pi install npm:@plannotator/pi-extension
+```
+
 ---
 
 ## Decision tree
@@ -512,6 +534,11 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ---
 
 ## Change notes
+
+### 2026-07-06
+- Added the **`llamacpp` provider** (Mac): pi → raw `llama-server` on `:8000`, the process Odysseus's Cookbook serves (`google/gemma-4-12B-it-qat-q4_0-gguf`, `-c 131072`, text-only). Cosmetic model id — llama.cpp ignores the request `model` field. Verified end-to-end with `pi --provider llamacpp -p`.
+- Synced `pi-config/models.json` with the live Mac `~/.pi/agent/models.json`: added the `gemma-4-12b-coder-fable5-composer2.5-nvfp4` LM Studio entry (current default model), bumped Qwen3.6 27B `contextWindow` 32768 → 34000, added the `ollama-cloud` provider (API-key placeholder).
+- Added the **External packages** section (the `pi install npm:...` set recorded in live `settings.json`); folded and deleted the scratch `temp.txt` that held it.
 
 ### 2026-05-16
 - Added the **Mac alternative — mlx_lm.server on M1 Pro 32 GB** section: `uv`-managed env running public `mlx-lm` 0.31.3, served via `mlx_lm.server` on `localhost:8080`, with a new `mlx-local` provider in `pi-config/models.json` alongside the existing `lmstudio` entry.

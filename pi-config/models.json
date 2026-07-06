@@ -24,13 +24,59 @@
             "text",
             "image"
           ],
-          "contextWindow": 32768,
+          "contextWindow": 34000,
           "reasoning": true,
           "name": "Qwen3.6 27B",
           "compat": {
             "thinkingFormat": "qwen",
             "supportsDeveloperRole": false
           }
+        },
+        {
+          "id": "gemma-4-12b-coder-fable5-composer2.5-nvfp4",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 131072,
+          "reasoning": true,
+          "name": "Gemma 4 12B Coder",
+          "compat": {
+            "thinkingFormat": "qwen-chat-template"
+          }
+        }
+      ]
+    },
+    "llamacpp": {
+      "name": "llama.cpp (Odysseus llama-server)",
+      "baseUrl": "http://localhost:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "llamacpp",
+      "models": [
+        {
+          "id": "gemma-4-12b-it-qat-q4_0",
+          "name": "Gemma 4 12B QAT (llama.cpp)",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "reasoning": true
+        }
+      ]
+    },
+    "ollama-cloud": {
+      "name": "Ollama Cloud",
+      "baseUrl": "https://ollama.com/v1",
+      "api": "openai-completions",
+      "apiKey": "YOUR_OLLAMA_API_KEY_HERE",
+      "models": [
+        {
+          "id": "kimi-k2.7-code:cloud",
+          "name": "Kimi K2.7 Code",
+          "contextWindow": 256000,
+          "input": [
+            "text"
+          ]
         }
       ]
     }
