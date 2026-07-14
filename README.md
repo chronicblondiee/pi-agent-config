@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32k context and added a one-command `pi-mlx-local` launcher; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-14 — added the offline-default `/online` web-search toggle for `claude-mode` and raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32k context; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -339,7 +339,7 @@ Pi is `@earendil-works/pi-coding-agent` on npm. Repo: <https://github.com/badlog
 
 ### `models.json` template
 
-A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.json). Key shape:
+A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.json). The checked-in template is currently synced with the live Mac `~/.pi/agent/models.json`: LM Studio on `:1234`, Odysseus `llamacpp` on `:8000`, the default `mlx-local` Qwen3.6 35B A3B OptiQ harness on `:8080`, and an `ollama-cloud` placeholder. Key shape:
 
 ```json
 {
@@ -349,10 +349,17 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
       "api": "openai-completions",
       "apiKey": "lm-studio",
       "models": [
-        { "id": "qwen/qwen3.6-27b",          "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
-        { "id": "qwen/qwen3.6-35b-a3b",      "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
-        { "id": "google/gemma-4-26b-a4b",    "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } },
-        { "id": "google/gemma-4-31b",        "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } }
+        { "id": "qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx", "input": ["text", "image"], "contextWindow": 131072, "reasoning": true },
+        { "id": "qwen/qwen3.6-27b", "input": ["text", "image"], "contextWindow": 34000, "reasoning": true },
+        { "id": "gemma-4-12b-coder-fable5-composer2.5-nvfp4", "input": ["text", "image"], "contextWindow": 131072, "reasoning": true }
+      ]
+    },
+    "llamacpp": {
+      "baseUrl": "http://localhost:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "llamacpp",
+      "models": [
+        { "id": "gemma-4-12b-it-qat-q4_0", "input": ["text"], "contextWindow": 131072, "reasoning": true }
       ]
     },
     "mlx-local": {
@@ -361,6 +368,14 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
       "apiKey": "mlx-local",
       "models": [
         { "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
+      ]
+    },
+    "ollama-cloud": {
+      "baseUrl": "https://ollama.com/v1",
+      "api": "openai-completions",
+      "apiKey": "YOUR_OLLAMA_API_KEY_HERE",
+      "models": [
+        { "id": "kimi-k2.7-code:cloud", "input": ["text"], "contextWindow": 256000 }
       ]
     }
   }
@@ -384,6 +399,10 @@ The Mac config also carries a `llamacpp` provider pointing at a raw `llama-serve
 
 - `/model` slash command in the REPL, or
 - `Ctrl+L` keyboard shortcut
+
+### Current live Mac settings
+
+The inspected live `~/.pi/agent/settings.json` currently sets plain `pi` to `defaultProvider: "mlx-local"` and `defaultModel: "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit"`. It also keeps `PI_OFFLINE: true`, `defaultThinkingLevel: "medium"`, and the external package list to `npm:pi-bar`. `~/.pi/agent/APPEND_SYSTEM.md` is symlinked to [`pi-config/APPEND_SYSTEM.md.example`](./pi-config/APPEND_SYSTEM.md.example), and the live symlinked extensions are `claude-mode`, `fetch`, `web-search`, `git-checkpoint`, `question`, and `todo-tracker`.
 
 ### LM Studio server prerequisites
 
@@ -418,9 +437,11 @@ Pi has no built-in permission system or plan mode — both are deliberate non-fe
 - **`/plan`** — planning mode. Active tools restricted to `read, bash, grep, find, ls, question`; `bash` still asks for confirmation, `write`/`edit` are unavailable.
 - **`/yolo`** — disable the gate for the rest of the session (asks for one confirmation).
 - **`/ask`** — restore default gated behavior, clears any "always" memory.
-- **`/trust-status`** — print current mode and remembered allow-list.
+- **`/online`** — add `web_search` and read-only `fetch` to the active tool list. `fetch` is limited to `GET` and `HEAD`; use confirmed `bash` for intentional network mutation.
+- **`/offline`** — remove web tools again. This is the startup default.
+- **`/trust-status`** — print current safety mode, network mode, active tools, and remembered allow-list.
 - **`/trust-tool <name>`** — pre-allow a single gated tool (`bash`, `edit`, or `write`) for the session without going through a prompt. `/untrust-tool <name>` revokes it.
-- Footer shows `[ask]` / `[plan]` / `[yolo]`. State resets every session.
+- Footer shows `[ask offline]` / `[plan online]` / `[yolo offline]` style status. State resets every session.
 
 Install (one-time symlink so edits in this repo take effect live):
 
@@ -433,21 +454,25 @@ Pi auto-discovers `~/.pi/agent/extensions/*/index.ts` — no settings.json entry
 
 ### Additional extensions
 
-For the slim offline harness, keep only the extensions that provide Claude-Code-like essentials without extra network or package assumptions. The repo still contains older optional extensions, but `claude-mode` now restores only `read, bash, edit, write, grep, find, ls, question, todo` on `/ask`; `/plan` keeps `read, bash, grep, find, ls, question`. Tools such as `fetch`, `ast-grep`, `test`, `remember`, and `forget` intentionally do not reappear after mode toggles.
+For the slim offline harness, keep only the extensions that provide Claude-Code-like essentials without extra package assumptions. `claude-mode` restores only `read, bash, edit, write, grep, find, ls, question, todo` on `/ask`; `/plan` keeps `read, bash, grep, find, ls, question`. `/online` adds only `web_search` and read-only `fetch`; `/offline` removes both again. Tools such as `ast-grep`, `test`, `remember`, and `forget` intentionally do not reappear after mode toggles.
 
 | Extension | What it does | Commands |
 |---|---|---|
 | **git-checkpoint** | Commits before each agent turn; offers restore on `/fork`. Note: rewrites your working-tree commits while pi runs — incompatible with `git add -p` workflows. Use `/checkpoint-off` to pause without unloading. | `/checkpoint`, `/checkpoints`, `/restore <sha>`, `/checkpoint-off`, `/checkpoint-on` |
 | **todo-tracker** | `todo` tool for the LLM to manage a task list; status widget shows `done/total` | `/todos` |
 | **question** | `question` tool that pauses the agent mid-turn for user input. Full custom TUI: ↑/↓ to navigate supplied options, Enter to pick, or pick "Type something." for a free-form answer. Esc cancels. Headless `pi -p` returns an error result instead of blocking. Vendored from the upstream pi example. Added to both `ASK_TOOLS` and `PLAN_TOOLS` — UI only, no side effects. | _(no slash commands)_ |
+| **web-search** | `web_search` tool backed by DuckDuckGo HTML results, no API key. Useful but parser-brittle because the HTML endpoint is not a stable official search API. Only active after `/online`. | _(no slash commands)_ |
+| **fetch** | `fetch` tool for HTTP/HTTPS URL reads. When enabled through `claude-mode` `/online`, only `GET` and `HEAD` are allowed. | _(no slash commands)_ |
 
-Install the live offline set:
+Install the live set:
 
 ```fish
-for ext in git-checkpoint todo-tracker question;
+for ext in git-checkpoint todo-tracker question web-search fetch;
   ln -sf ~/projects/pi-agent-config/pi-config/extensions/$ext ~/.pi/agent/extensions/$ext;
 end
 ```
+
+Verification notes for the web toggle: start pi and confirm the footer is `[ask offline]`; `/trust-status` should show `network: offline` and no web tools. Run `/online` and confirm `web_search` plus `fetch` appear in active tools, `web_search` returns results for a known query, `fetch` can `GET` one result URL, and `fetch` with `POST` is blocked. `/offline` should remove both web tools again. `/plan` + `/online` should allow web reads while `edit` and `write` remain unavailable.
 
 ### Skills
 
@@ -545,11 +570,12 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
+- Added [`pi-config/extensions/web-search/`](./pi-config/extensions/web-search/) and new `claude-mode` `/online` / `/offline` commands. Startup remains offline; online mode adds `web_search` and read-only `fetch`, with `/trust-status` reporting both safety and network state.
 - Raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32768 context and added [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh), which starts or reuses `mlx-openai-server` before launching Pi.
 - Set the live Mac Pi default to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so plain `pi` uses the `mlx-openai-server` Qwen3.6 35B A3B OptiQ harness.
 - Clarified the Mac shell split: Pi's `bash` tool is `/bin/bash -c` by default, the user's terminal can still be fish, direct `~/projects/mac-mlx-env/bin/...` executables are preferred for automation, and `shellPath: "/opt/homebrew/bin/fish"` is intentionally not recommended.
 - Kept confirmed `bash` available in `claude-mode` `/plan` for diagnostic shell commands while continuing to block `write` and `edit`.
-- Switched the Mac offline harness from direct `mlx_lm.server` notes to `mlx-openai-server` on `127.0.0.1:8080`, with `uv` + Python 3.12 and `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` as the primary model.
+- Switched the Mac offline harness to `mlx-openai-server` on `127.0.0.1:8080`, with `uv` + Python 3.12 and `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` as the primary model.
 - Added [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh) for the reproducible `~/projects/mac-mlx-env` setup (`mlx-openai-server` + `hf_transfer`).
 - Slimmed `claude-mode` restoration: `/ask` restores `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `question`, and `todo`; `/plan` keeps only `read`, `bash`, `grep`, `find`, `ls`, and `question`.
 - Reduced the documented external package set to `npm:pi-bar`; heavier planning/task/subagent packages are now called out as intentionally excluded from the offline harness.
@@ -560,9 +586,8 @@ You can edit those files directly, but every advanced setting is exposed in the 
 - Added the **External packages** section (the `pi install npm:...` set recorded in live `settings.json`); folded and deleted the scratch `temp.txt` that held it.
 
 ### 2026-05-16
-- Added the **Mac alternative — mlx_lm.server on M1 Pro 32 GB** section: `uv`-managed env running public `mlx-lm` 0.31.3, served via `mlx_lm.server` on `localhost:8080`, with a new `mlx-local` provider in `pi-config/models.json` alongside the existing `lmstudio` entry.
-- Added two wrappers: [`scripts/mlx-server.sh`](./scripts/mlx-server.sh) (portable bash 3.2) and [`pi-config/scripts/mlx-server.fish`](./pi-config/scripts/mlx-server.fish) (fish-native). Installable as `~/.local/bin/mlx-server` via symlink; bundles `start|stop|restart|status|log|list`.
-- Confirmed `mlx_lm.server` 0.31.3 reports the **full absolute path** passed to `--model`, not the directory basename — `mlx-local` model `id` is per-machine.
+- Added the first Mac-local `mlx-local` provider notes for an M1 Pro 32 GB host. The current documented path has since moved to `mlx-openai-server` plus [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh) and [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh).
+- Confirmed the earlier Mac MLX server reported the **full absolute path** passed to `--model`, not the directory basename — `mlx-local` model `id` was per-machine on that path.
 - Confirmed `--draft-model` and `--num-draft-tokens` are supported on 0.31.3; MTPLX's narrower remaining appeal is *MTP-aware* speculative decoding only.
 - Fixed pi e2e 404 `Unexpected message role.` by adding `"supportsDeveloperRole": false` to the `mlx-local` compat block — pi was sending the `developer` role, which Qwen3.6's `chat_template.jinja` rejects. LM Studio masks this server-side, so `lmstudio` entries don't need the flag.
 - Bumped Mac `contextWindow` 16384 → 32768 (KV pressure untested at 32k; flagged in Measurements pending).
@@ -582,7 +607,7 @@ You can edit those files directly, but every advanced setting is exposed in the 
 - Enabled `reasoning: true` + `compat.thinkingFormat: "qwen-chat-template"` on both Gemma 4 entries in `models.json`.
 - Renamed `pi-config/SYSTEM.md.example` → `pi-config/APPEND_SYSTEM.md.example`; synced the live append-style system prompt.
 - Added the **Error recovery** section to `APPEND_SYSTEM.md`.
-- Added `fetch` extension — HTTP/HTTPS GET/POST/PUT/PATCH/DELETE/HEAD with custom headers, default 256 KB response cap (4 MB hard), 30 s timeout.
+- Added `fetch` extension — HTTP/HTTPS URL reads with custom headers, default 256 KB response cap (4 MB hard), 30 s timeout. Current `claude-mode` online usage allows only `GET` and `HEAD`.
 
 ### 2026-05-10
 - Added `reasoning: true` and `compat: { thinkingFormat: "qwen" }` to both Qwen3.6 entries — both fields are required for thinking mode to fire over LM Studio's OpenAI-compat transport, otherwise `enable_thinking` is never sent.

@@ -6,6 +6,8 @@
  * mangles output formatting on some local models). Supports
  * GET/POST/PUT/PATCH/DELETE/HEAD, custom headers, request body for
  * write methods, a configurable response cap, and a request timeout.
+ * Under claude-mode /online, the model-facing contract is read-only:
+ * GET/HEAD only. claude-mode enforces that policy.
  *
  * Why this exists:
  *   - Read documentation pages, raw GitHub files, API responses
@@ -17,10 +19,9 @@
  * rejected. Response body is capped at 256 KB by default (4 MB hard
  * cap) so a single fetch can't blow up the context window.
  *
- * Pairs with claude-mode: this extension also appears in claude-mode's
- * ASK_TOOLS list so it stays callable after a /plan → /ask cycle. It
- * is intentionally NOT in PLAN_TOOLS — plan mode is for local
- * exploration, not network calls.
+ * Pairs with claude-mode: this extension is only added to active tools after
+ * /online. claude-mode treats it as read-only there, allowing GET/HEAD and
+ * blocking POST/PUT/PATCH/DELETE.
  */
 
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -119,12 +120,13 @@ export default function fetchExtension(pi: ExtensionAPI): void {
     name: "fetch",
     label: "Fetch URL",
     description:
-      "Fetch a URL over HTTP/HTTPS and return the response body as text. Use for reading documentation pages, hitting local or remote HTTP APIs, checking service health, and retrieving raw files from GitHub or other static hosts. http:// and https:// only.",
+      "Read a URL over HTTP/HTTPS and return the response body as text. Under claude-mode /online this tool is for GET/HEAD only; use for documentation pages, local or remote read-only HTTP APIs, service health checks, and raw files from GitHub or other static hosts. http:// and https:// only.",
     promptSnippet:
-      "Fetch a URL over HTTP/HTTPS and return its response body (GET/POST/PUT/PATCH/DELETE/HEAD)",
+      "Read a URL over HTTP/HTTPS and return its response body. In claude-mode online usage, fetch is GET/HEAD only.",
     promptGuidelines: [
       "Use fetch when you need to read a URL the user references — documentation, raw GitHub files, API responses — instead of asking the user to paste contents.",
-      "Use fetch with a local URL (e.g. http://localhost:1234/v1/models) to probe dev services rather than running curl through bash.",
+      "Use fetch with GET or HEAD for local URLs (e.g. http://localhost:1234/v1/models) to probe dev services rather than running curl through bash.",
+      "Do not use fetch for POST, PUT, PATCH, or DELETE under claude-mode; those methods are blocked there. Use confirmed bash only when the user explicitly wants network mutation.",
       "Do not use fetch as a substitute for read/write/edit on local files; those tools handle paths, file:// is not supported here.",
     ],
     parameters: FetchParams,
