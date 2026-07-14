@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — added the offline-default `/online` web-search toggle for `claude-mode` and raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32k context; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-14 — documented current Pi-visible context usage for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -148,7 +148,7 @@ The wrapper version `mlx-llm-...-1.8.1` shipped 2026-05-16 still pins to the sam
 
 ### Hardware profile
 
-Apple M1 Pro, 32 GB unified memory, macOS 14+. **All numbers in this section are _needs measurement_ — do not extrapolate from the 7900 XTX tables above.**
+Apple M1 Pro, 32 GB unified memory, macOS 14+. **Only the explicitly marked Pi-visible context numbers below are measured for this host — do not extrapolate from the 7900 XTX tables above.**
 
 ### Build a uv-managed env
 
@@ -297,6 +297,29 @@ For the offline dry-run, turn Wi-Fi off after the model has loaded once from cac
 [MTPLX](https://github.com/youssofal/MTPLX) is a native MTP-aware MLX runtime claiming ~2.24× decode TPS on Qwen3.6 27B by actually executing the MTP heads as a built-in speculative decoder. It also exposes an OpenAI-compatible server, so it would slot into the same `mlx-local` provider shape.
 
 **Cannot be used on this M1 Pro 32 GB** — MTPLX requires a minimum of **48 GiB unified memory** (warns below that floor; refuses to run above 80% utilization). Revisit when/if the host machine is upgraded.
+
+### Current Pi context status
+
+Current checked-in and live Mac Pi config agree on the server-side context window. This is a configured/Pi-visible state, not a max-stress-tested limit.
+
+| Model | Server context | Pi-visible context | Pi-visible max output | Thinking | Images |
+|---|---:|---:|---:|---|---|
+| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | 32768 | 32.8K | 16.4K | yes | no |
+
+Source of truth:
+
+- [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) starts `mlx-openai-server` with `--context-length 32768`.
+- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `32768`, `reasoning` to `true`, and `input` to `["text"]`.
+
+### Pi smoke usage sample
+
+Measured with a no-session Pi JSON run, which includes Pi's real system prompt and tool overhead instead of only the raw `/v1/chat/completions` prompt.
+
+| Command | Input | Output | Total tokens | Cache read | Cache write | Context used | Headroom |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `PI_OFFLINE=1 pi --mode json --no-session -p "Reply with exactly: ok"` | 5290 | 16 | 5306 | 0 | 0 | ~16.2% of 32768 | ~27462 tokens |
+
+Warm prompt-cache reruns can split the same 5290 prompt tokens across `input` and `cacheRead`; a 2026-07-14 rerun reported `input=12`, `cacheRead=5278`, `cacheWrite=0`, `output=16`, and the same `totalTokens=5306`.
 
 ### Measurements pending
 
@@ -570,6 +593,7 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
+- Documented current Pi-visible context stats for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness: 32768 configured context, 32.8K visible context, 16.4K visible max output, thinking on, text-only input, and a no-session smoke run using 5306 total tokens (~16.2%), including warm prompt-cache accounting.
 - Added [`pi-config/extensions/web-search/`](./pi-config/extensions/web-search/) and new `claude-mode` `/online` / `/offline` commands. Startup remains offline; online mode adds `web_search` and read-only `fetch`, with `/trust-status` reporting both safety and network state.
 - Raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32768 context and added [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh), which starts or reuses `mlx-openai-server` before launching Pi.
 - Set the live Mac Pi default to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so plain `pi` uses the `mlx-openai-server` Qwen3.6 35B A3B OptiQ harness.
