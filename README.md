@@ -319,6 +319,8 @@ Measured with a no-session Pi JSON run, which includes Pi's real system prompt a
 |---|---:|---:|---:|---:|---:|---:|---:|
 | `PI_OFFLINE=1 pi --mode json --no-session -p "Reply with exactly: ok"` | 5290 | 16 | 5306 | 0 | 0 | ~16.2% of 32768 | ~27462 tokens |
 
+Warm prompt-cache reruns can split the same 5290 prompt tokens across `input` and `cacheRead`; a 2026-07-14 rerun reported `input=12`, `cacheRead=5278`, `cacheWrite=0`, `output=16`, and the same `totalTokens=5306`.
+
 ### Measurements pending
 
 | Quantity | Value | How to measure |
@@ -591,7 +593,7 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
-- Documented current Pi-visible context stats for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness: 32768 configured context, 32.8K visible context, 16.4K visible max output, thinking on, text-only input, and a no-session smoke run using 5306 total tokens (~16.2%).
+- Documented current Pi-visible context stats for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness: 32768 configured context, 32.8K visible context, 16.4K visible max output, thinking on, text-only input, and a no-session smoke run using 5306 total tokens (~16.2%), including warm prompt-cache accounting.
 - Added [`pi-config/extensions/web-search/`](./pi-config/extensions/web-search/) and new `claude-mode` `/online` / `/offline` commands. Startup remains offline; online mode adds `web_search` and read-only `fetch`, with `/trust-status` reporting both safety and network state.
 - Raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32768 context and added [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh), which starts or reuses `mlx-openai-server` before launching Pi.
 - Set the live Mac Pi default to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so plain `pi` uses the `mlx-openai-server` Qwen3.6 35B A3B OptiQ harness.
