@@ -20,12 +20,11 @@
  *   - One uniform interface lets the model reason about "did tests
  *     pass" and "what broke" without language-switching
  *
- * Pairs with claude-mode: in ASK_TOOLS only. Deliberately NOT in
- * PLAN_TOOLS — running a test suite executes user code and is not
- * "read-only exploration". Not gated by claude-mode's confirmation
- * (no file writes by the tool itself), and the surface deliberately
- * excludes a free-form `command` parameter so the model can't smuggle
- * arbitrary shell through it — for custom commands use `bash`.
+ * Pairs with claude-mode: optional extension only. It is deliberately not
+ * part of the slim offline tool sets — running a test suite executes user
+ * code and is not "read-only exploration". The surface deliberately excludes
+ * a free-form `command` parameter so the model can't smuggle arbitrary shell
+ * through it — for custom commands use `bash`.
  */
 
 import { spawn } from "node:child_process";

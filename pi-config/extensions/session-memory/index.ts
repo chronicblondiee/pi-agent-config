@@ -25,9 +25,9 @@
  *   - /memory-clear    — wipe the current project's memory
  *   - /remember <text> — append a note manually (skips the LLM)
  *
- * Pairs with claude-mode: `remember` / `forget` are added to BOTH
- * ASK_TOOLS and PLAN_TOOLS — no file writes touch the project itself,
- * only `~/.pi/agent/memory/`, so they're safe in plan mode.
+ * Pairs with claude-mode: optional extension only. The current slim
+ * claude-mode tool sets do not restore `remember` / `forget` after mode
+ * toggles.
  *
  * Design choice: this is a flat list of bulleted notes, not typed
  * facts/preferences/etc. Kept deliberately simple — if the model wants

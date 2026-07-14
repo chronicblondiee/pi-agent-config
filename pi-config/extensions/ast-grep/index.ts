@@ -12,15 +12,15 @@
  *     positives on the word "function" inside comments or strings
  *   - Captures meta-variables (`$NAME`, `$$$ARGS`) so the LLM gets
  *     structured bindings, not just file:line hits
- *   - Read-only — safe in both ASK_TOOLS and PLAN_TOOLS
+ *   - Read-only, but not part of the current slim claude-mode tool sets
  *
  * Requires `ast-grep` on PATH (`pacman -S ast-grep` on Arch). If
  * missing, returns a clear error pointing at the install command.
  *
- * Pairs with claude-mode: appears in ASK_TOOLS and PLAN_TOOLS. The
- * tool deliberately does not expose ast-grep's `--rewrite` flag — that
- * would mutate files, bypassing claude-mode's confirmation gate. Use
- * `edit`/`write` for changes instead.
+ * Pairs with claude-mode: optional extension only. The tool deliberately
+ * does not expose ast-grep's `--rewrite` flag — that would mutate files,
+ * bypassing claude-mode's confirmation gate. Use `edit`/`write` for changes
+ * instead.
  */
 
 import { spawn } from "node:child_process";
