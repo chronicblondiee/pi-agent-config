@@ -64,6 +64,27 @@
         }
       ]
     },
+    "mlx-local": {
+      "name": "mlx-openai-server (Mac local)",
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "mlx-local",
+      "models": [
+        {
+          "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit",
+          "name": "Qwen3.6 35B A3B OptiQ 4bit (mlx-openai-server)",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 24576,
+          "reasoning": true,
+          "compat": {
+            "thinkingFormat": "qwen",
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    },
     "ollama-cloud": {
       "name": "Ollama Cloud",
       "baseUrl": "https://ollama.com/v1",

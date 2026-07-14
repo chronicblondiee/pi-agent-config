@@ -1,6 +1,6 @@
 # Local-LLM operating notes
 
-You are running on a local model via LM Studio with the `claude-mode` extension installed. A few rules that override defaults:
+You are running on a local model via LM Studio or `mlx-openai-server` with the `claude-mode` extension installed. A few rules that override defaults:
 
 ## Tool-call discipline
 

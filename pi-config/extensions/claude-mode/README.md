@@ -16,12 +16,14 @@ A `[ask]` indicator appears in the footer.
 
 | Command | Effect |
 |---|---|
-| `/plan` | Read-only mode. Active tools restricted to `read, grep, find, ls`. `bash/write/edit` are removed from the model's tool list AND the gate blocks them defensively. Footer shows `[plan]`. |
+| `/plan` | Read-only mode. Active tools restricted to `read, grep, find, ls, question`. `bash/write/edit` are removed from the model's tool list AND the gate blocks them defensively. Footer shows `[plan]`. |
 | `/yolo` | Disable the gate for this session. Asks for one confirmation first. Footer shows `[yolo]`. |
 | `/ask`  | Restore default behavior. Clears any remembered "always" choices. Footer shows `[ask]`. |
 | `/trust-status` | Print current mode and the auto-allow lists. |
 
 State resets on every session start — there is no persistence. By design: the safe default should be re-asserted every launch.
+
+`/ask` restores the slim offline harness tool set: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `question`, and `todo`. Older optional tools such as `fetch`, `ast-grep`, `test`, `remember`, and `forget` are deliberately excluded so they do not reappear after a `/plan` → `/ask` toggle.
 
 ## Install
 
