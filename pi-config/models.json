@@ -5,18 +5,100 @@
       "api": "openai-completions",
       "apiKey": "lm-studio",
       "models": [
-        { "id": "qwen/qwen3.6-27b",       "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
-        { "id": "qwen/qwen3.6-35b-a3b",   "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen" } },
-        { "id": "google/gemma-4-26b-a4b", "input": ["text", "image"], "contextWindow": 65536, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } },
-        { "id": "google/gemma-4-31b",     "input": ["text", "image"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen-chat-template" } }
+        {
+          "id": "qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 131072,
+          "reasoning": true,
+          "name": "Qwen3.5 9B Coder",
+          "compat": {
+            "thinkingFormat": "qwen"
+          }
+        },
+        {
+          "id": "qwen/qwen3.6-27b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 34000,
+          "reasoning": true,
+          "name": "Qwen3.6 27B",
+          "compat": {
+            "thinkingFormat": "qwen",
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "gemma-4-12b-coder-fable5-composer2.5-nvfp4",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 131072,
+          "reasoning": true,
+          "name": "Gemma 4 12B Coder",
+          "compat": {
+            "thinkingFormat": "qwen-chat-template"
+          }
+        }
+      ]
+    },
+    "llamacpp": {
+      "name": "llama.cpp (Odysseus llama-server)",
+      "baseUrl": "http://localhost:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "llamacpp",
+      "models": [
+        {
+          "id": "gemma-4-12b-it-qat-q4_0",
+          "name": "Gemma 4 12B QAT (llama.cpp)",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "reasoning": true
+        }
       ]
     },
     "mlx-local": {
+      "name": "mlx-openai-server (Mac local)",
       "baseUrl": "http://localhost:8080/v1",
       "api": "openai-completions",
       "apiKey": "mlx-local",
       "models": [
-        { "id": "/Users/brown/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
+        {
+          "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit",
+          "name": "Qwen3.6 35B A3B OptiQ 4bit (mlx-openai-server)",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "reasoning": true,
+          "compat": {
+            "thinkingFormat": "qwen",
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    },
+    "ollama-cloud": {
+      "name": "Ollama Cloud",
+      "baseUrl": "https://ollama.com/v1",
+      "api": "openai-completions",
+      "apiKey": "YOUR_OLLAMA_API_KEY_HERE",
+      "models": [
+        {
+          "id": "kimi-k2.7-code:cloud",
+          "name": "Kimi K2.7 Code",
+          "contextWindow": 256000,
+          "input": [
+            "text"
+          ]
+        }
       ]
     }
   }

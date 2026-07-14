@@ -16,12 +16,14 @@ A `[ask]` indicator appears in the footer.
 
 | Command | Effect |
 |---|---|
-| `/plan` | Read-only mode. Active tools restricted to `read, grep, find, ls`. `bash/write/edit` are removed from the model's tool list AND the gate blocks them defensively. Footer shows `[plan]`. |
+| `/plan` | Planning mode. Active tools restricted to `read, bash, grep, find, ls, question`. `bash` remains gated by confirmation; `write/edit` are removed from the model's tool list AND the gate blocks them defensively. Footer shows `[plan]`. |
 | `/yolo` | Disable the gate for this session. Asks for one confirmation first. Footer shows `[yolo]`. |
 | `/ask`  | Restore default behavior. Clears any remembered "always" choices. Footer shows `[ask]`. |
-| `/trust` | Print current mode and the auto-allow lists. |
+| `/trust-status` | Print current mode and the auto-allow lists. |
 
 State resets on every session start — there is no persistence. By design: the safe default should be re-asserted every launch.
+
+`/ask` restores the slim offline harness tool set: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `question`, and `todo`. `/plan` keeps `bash` for inspection commands, but removes `edit`, `write`, and `todo`. Older optional tools such as `fetch`, `ast-grep`, `test`, `remember`, and `forget` are deliberately excluded so they do not reappear after a `/plan` → `/ask` toggle.
 
 ## Install
 
@@ -43,7 +45,7 @@ npm init -y && npm i -D @earendil-works/pi-coding-agent
 
 ## Verifying it loaded
 
-Inside pi, type `/` and look for `plan`, `yolo`, `ask`, `trust` in the autocomplete. Or check the footer for `[ask]`.
+Inside pi, type `/` and look for `plan`, `yolo`, `ask`, `trust-status`, `trust-tool`, and `untrust-tool` in the autocomplete. Or check the footer for `[ask]`.
 
 If something goes wrong, pi reports extension load errors in `/tree` (Esc Esc).
 
@@ -51,7 +53,8 @@ If something goes wrong, pi reports extension load errors in `/tree` (Esc Esc).
 
 - "Always for this exact command" matches the bash command string verbatim. `npm test` and `npm test --watch` are different commands and prompt separately. This is intentional — it stops typo-driven trust-creep.
 - "Always allow this tool" for write/edit is per-tool, not per-path. Granted once, all writes/edits this session bypass the gate. Use sparingly.
-- Plan mode is **strict**: no bash at all, even read-only commands like `git status`. If you need a one-off shell command while planning, `/ask`, run it (with confirmation), then `/plan` again. The upstream `plan-mode` example in pi-mono allows allowlisted bash; this extension prefers explicit mode-switching for clarity.
+- Plan mode blocks file mutation, not shell inspection. `bash` remains available for commands like `git status`, `rg`, `ls`, and other diagnostics, with the same confirmation prompt used in `/ask`. Switch to `/ask` before edits, installs, server starts, commits, pushes, or any command whose purpose is to change system state.
+- The tool named `bash` is still Pi's shell tool; this extension does not make it fish-native. Keep model-generated shell commands POSIX/bash-compatible and use fish syntax only for commands you type directly in a fish terminal.
 - There is a `plan-mode` example shipped with pi-mono. Don't load both — the `/plan` command will collide and pi will rename one to `/plan:1`.
 
 ## Why not just use the upstream `plan-mode` example?

@@ -1,0 +1,2232 @@
+╭─── Claude Code v2.1.185 ─────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                Welcome back Aodhan!                │ started                 │
+│                                                    │ ✔ Run /init to create … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ What's new              │
+│                        ▘▘ ▝▝                       │ The stream-stall hint … │
+│      Opus 4.8 · Claude Pro ·                       │ Improved auto mode saf… │
+│      chronicblondiee@gmail.com's Organization      │ Added a warning when t… │
+│             ~/projects/pi-agent-config             │ /release-notes for more │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+ ▎ Using Opus 4.8 (from .claude/settings.json) · /model
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+⏺ Both removed successfully — the ls "No such file or directory" errors confirm
+  they're gone (the exit 1 is just ls reporting the absence we wanted).
+
+  Cleanup complete. Summary of what's now gone vs. what remains:
+
+  Removed (old manual-server setup):
+  - ~/.local/bin/mlx-server, ~/.local/bin/mtplx-server — stale PATH symlinks
+  - ~/projects/mac-mlx-env — 310M old uv venv with the pre-Homebrew mlx_lm
+  - ~/.local/state/mlx-server — old PID/log state dir
+
+  Left intact (in your repo, your call):
+  - ~/projects/maki-config/scripts/{mlx-server,mtplx-server}.sh — source
+  scripts; delete from within that git repo if you want them gone
+
+  Current setup — untouched and healthy:
+  - mlx-model CLI + fish completions
+  - launchd services com.brown.mlx-qwen9b (:18080) and com.brown.litellm-mlx
+  (:4000)
+  - 3 Qwen models served to Codex
+
+✻ Baked for 19s
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Read mlx-local-llm/README.md (73 lines)
+  ⎿  Read .config/fish/completions/mlx-model.fish (46 lines)
+  ⎿  Read mlx-local-llm/models.json (30 lines)
+  ⎿  Referenced file mlx-local-llm/bin/mlx-model
+  ⎿  Read Library/LaunchAgents/com.brown.mlx-qwen9b.plist (29 lines)
+  ⎿  Plan file referenced (~/.claude/plans/proposed-plan-crispy-flame.md)
+
+❯ does the mlx server we are using to run qwen offer better performance over    
+  mlx runtimes and why                                                          
+
+⏺ Short answer: no, mlx_lm.server doesn't give you a raw-speed edge over other 
+  MLX runtimes — they all sit on the same MLX inference core, so token
+  throughput is basically identical for the same model and quant. Where it does
+  win is against non-MLX runtimes (Ollama/llama.cpp), and where it earns its
+  place in your setup is operational fit, not speed. Let me break that apart,
+  since the "why" is the interesting part.
+
+  "MLX server" vs other "MLX runtimes"
+
+  The thing we run, mlx_lm.server, is just the reference HTTP server shipped in
+  Apple's mlx-lm package. The actual math — the Metal kernels, the
+  attention/matmul ops, the dequant routines — lives in the mlx core library.
+  Every MLX-based runtime calls into that same core:
+
+  - LM Studio's MLX engine, Osaurus, mlx-vlm, mlx_lm.server → all wrap mlx +
+  mlx-lm.
+
+  So for, say, your Qwen 9B mxfp4 model, you'd get essentially the same
+  tokens/sec whichever of those serves it. The differences between them are
+  overhead and features, not inference speed:
+
+  ┌────────────┬────────────────────────────────────────────────────────────┐
+  │  Runtime   │                 Trade-off vs mlx_lm.server                 │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │ LM Studio  │ Same kernels, but Electron GUI + its own server layer;     │
+  │            │ heavier, not built to be a headless launchd service.       │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │            │ Same kernels + vision support; slightly more overhead, and │
+  │ mlx-vlm    │  (as you found) its chat templates choke on Codex tool     │
+  │            │ defs.                                                      │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │ Osaurus /  │ Same kernels; varying server feature sets.                 │
+  │ others     │                                                            │
+  └────────────┴────────────────────────────────────────────────────────────┘
+
+  mlx_lm.server is the thinnest, upstream, scriptable option: a single CLI
+  binary, no GUI process, clean launchd integration, and the lazy hot-swap
+  behavior your mlx-model CLI depends on (request a different path → evict +
+  load, no restart). That's why it's the right pick here — minimal moving parts,
+  not a speed advantage.
+
+  Where MLX genuinely outperforms: vs Ollama / llama.cpp
+
+  This is the real "MLX is faster" story, and it's about a different backend,
+  not a different MLX server:
+
+  - Ollama / llama.cpp run GGUF models through a Metal backend that's a generic
+  GPU port of a CPU-first engine.
+  - MLX was written from scratch for Apple Silicon, so it exploits things
+  llama.cpp's Metal path doesn't as cleanly:
+    - Unified memory — no host↔GPU copies; weights and KV cache live in one
+  address space.
+    - Lazy evaluation + graph fusion — ops are composed and fused before
+  executing on Metal.
+    - Native modern quant formats — e.g. mxfp4 and MLX 4-bit, which your models
+  use; these are tuned for the hardware rather than retrofitted.
+
+  In practice, for the same model on the same Mac, MLX tends to beat llama.cpp
+  Metal on prompt-processing and generation throughput (the gap varies by model
+  and quant). So if you compared your stack to running the same Qwen under
+  Ollama, MLX would generally be the faster one — but that's MLX-vs-llama.cpp,
+  not mlx_lm.server-vs-other-MLX-servers.
+
+  Bottom line
+
+  - Against other MLX runtimes: ~same speed; we chose mlx_lm.server for being
+  lean, headless, scriptable, and supporting the hot-swap your CLI relies on.
+  - Against Ollama/llama.cpp: MLX is the genuine performance win, thanks to
+  unified-memory, lazy-eval Metal kernels, and native MLX quant formats.
+
+  One caveat: I've kept this to architecture rather than quoting benchmark
+  numbers, since exact tokens/sec swings a lot by model, quant, and macOS/MLX
+  version. If you want, I can run a quick head-to-head on your actual Qwen 9B
+  (e.g. throughput via the :18080 endpoint) so you've got real numbers for your
+  hardware — just say the word and I'll drop out of planning to do it.
+
+✻ Sautéed for 43s
+
+❯ so we use mlx-vlm to run qwen                                                 
+
+⏺ No — we use mlx_lm.server, not mlx-vlm. mlx-vlm was the runtime we briefly
+  added for Gemma 4, then fully reverted when you dropped Gemma support.
+
+  You can see it in the LaunchAgent that actually serves the model:
+
+  ~/Library/LaunchAgents/com.brown.mlx-qwen9b.plist
+    → /opt/homebrew/opt/mlx-lm/bin/mlx_lm.server --port 18080 --model <qwen9b
+  path>
+
+  So the live path is:
+
+  codex → LiteLLM (:4000) → mlx_lm.server (:18080) → Qwen
+
+  The distinction matters for the reason from my last answer:
+
+  - mlx_lm.server (what you run) — text-only MLX server from the mlx-lm package.
+  Handles all three of your Qwen models fine, including Codex's tool-calling.
+  - mlx-vlm — the multimodal MLX server. It was only ever needed because Gemma
+  4's gemma4_unified arch wouldn't load under mlx_lm. It's gone now: the
+  backend, its LiteLLM additional_drop_params, and the Gemma model entries were
+  all removed.
+
+  Both wrap the same MLX core, so for Qwen there'd be no speed difference anyway
+  — but you're correctly served by the lighter, text-only one, and it's the one
+  that doesn't choke on Codex's tool definitions.
+
+✻ Worked for 11s
+
+❯ but this one doesnt support images ?                                          
+
+⏺ Correct — mlx_lm.server is text-only. It has no vision path at all; if a
+  request includes an image, it can't process it.
+
+  But that's not a limitation for your setup, for two reasons:
+
+  1. Your models are text-only anyway. All three registered Qwen models (9B
+  Coder, 27B, 35B MoE) are text LLMs — they have no vision encoder, so even a
+  multimodal server couldn't extract image understanding from them. The
+  capability has to be in the model, not just the server.
+  2. Codex doesn't send images. It's a coding agent — it sends code, diffs, and
+  tool calls, all text. So the vision path would never be exercised even if it
+  existed.
+
+  If you ever did want image input, you'd need both halves:
+  - a vision-language model (e.g. a Qwen-VL or Gemma multimodal checkpoint), and
+  - mlx-vlm to serve it (the runtime we removed).
+
+  That's the exact combo we built and then tore out for Gemma 4. For Codex +
+  Qwen coding work, text-only mlx_lm.server is the right fit — adding vision
+  would be weight and overhead you'd never use.
+
+✻ Brewed for 8s
+
+❯ check the running status of my current mlx models I added a new download to   
+  my lm studio I want to register                                               
+
+⏺ I'll check the running status and scan for the new model you added.
+
+⏺ Bash(mlx-model status; echo "----- SCAN -----"; mlx-model scan)
+  ⎿  Registry: /Users/brown/mlx-local-llm/models.json
+     Default (boot) model: mlx-qwen9b
+     MLX     http://127.0.0.1:18080/health    -> {"status": "ok"}
+     … +10 lines (ctrl+o to expand)
+
+⏺ Services are healthy (both mlx_lm.server :18080 and LiteLLM :4000 running,
+  default mlx-qwen9b), and the scan found exactly one new unregistered model:
+
+  /Users/brown/.lmstudio/models/lmstudio-community/Qwen3.6-27B-MLX-4bit
+
+  Let me inspect it so I can register it with the right slug, context, and stop
+  token. Note there's a naming consideration: you already have mlx-qwen27b (the
+  Youssofal MTPLX 27B), so this lmstudio-community 4-bit 27B needs a distinct
+  slug.
+
+⏺ Bash(d=/Users/brown/.lmstudio/models/lmstudio-community/Qwen3.6-27B-MLX-4bit
+      echo "=== dir listing ==="; ls -la "$d" 2>/dev/null | head -40…)
+  ⎿  === dir listing ===
+     total 31470704
+     drwxr-xr-x@ 16 brown  staff         512 22 Jun 12:21 .
+     … +24 lines (ctrl+o to expand)
+
+⏺ Important catch — this model has preprocessor_config.json,
+  processor_config.json, video_preprocessor_config.json, and a separate
+  chat_template.jinja. Those are the fingerprints of a vision-language 
+  (multimodal) model, not a plain text model. And max_position_embeddings is
+  None at the top level, which means the config is nested (a
+  text_config/vision_config split — typical of VL models). Let me read the full
+  config to confirm before deciding how to register it.
+
+⏺ Bash(d=/Users/brown/.lmstudio/models/lmstudio-community/Qwen3.6-27B-MLX-4bit
+      echo "=== top-level keys ==="; python3 -c "import
+      json;c=json.load(open('$d/config.json'…)
+  ⎿  === top-level keys ===
+     ['architectures', 'eos_token_id', 'image_token_id', 'language_model_on
+     ly', 'model_type', 'quantization', 'quantization_config', 'text_config
+     … +14 lines (ctrl+o to expand)
+
+⏺ Bash(d=/Users/brown/.lmstudio/models/lmstudio-community/Qwen3.6-27B-MLX-4bit
+      python3 -c "import
+      json;c=json.load(open('$d/config.json'));print('language_model_only:'…)  ⎿  language_model_only: False
+     image_token_id: 248056
+     video_token_id: 248057
+     … +17 lines (ctrl+o to expand)
+
+❯ clean up deleted models while you are at it should only have qwen3.6 27b mlx  
+  and qwen35 9b mlx                                                             
+
+⏺ Let me verify which registered model paths still exist on disk (to find the
+  "deleted" ones), and confirm the full picture before I plan the cleanup.
+
+⏺ Bash(echo "=== registered model paths — exist on disk? ==="
+      python3 -c "…)
+  ⎿  === registered model paths — exist on disk? ===
+     OK    mlx-qwen9b       Qwen 3.5 9B Coder MLX
+             /Users/brown/.lmstudio/models/nightmedia/Qwen3.5-9B-TNG-PKD-Qw
+     … +15 lines (ctrl+o to expand)
+
+⏺ I found something important before doing the cleanup. Here's the real picture:
+
+  Current registry actually has 4 models (not 3 — there's a Gemma entry too),
+  all present on disk:
+
+  ┌──────────────────────────────┬───────────────────────────────────────────┐
+  │             slug             │                what it is                 │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ mlx-qwen9b                   │ nightmedia Qwen3.5-9B Coder MLX — your 9B │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ mlx-qwen27b                  │ Youssofal Qwen3.6-27B-MTPLX FP16 (text) — │
+  │                              │  currently works                          │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ mlx-qwen35b-moe              │ Qwen3.6-35B-A3B MoE                       │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ mlx-gemma-4-12b-it-qat-mxfp4 │ OsaurusAI Gemma-4-12B (a Gemma entry      │
+  │                              │ survived)                                 │
+  └──────────────────────────────┴───────────────────────────────────────────┘
+
+  None are "GONE" from disk — so the cleanup is trimming the registry down to
+  the two you want, not removing dead paths.
+
+  The catch with the new download: lmstudio-community/Qwen3.6-27B-MLX-4bit —
+  despite the plain name — is a vision-language model, not a text model:
+  - arch Qwen3_5ForConditionalGeneration, has vision_config,
+  image_token_id/video_token_id, configuration.json says task: 
+  image-text-to-text, language_model_only: false.
+  - Your mlx_lm.server is text-only and has loaders for qwen3_5 / qwen3_5_moe
+  but no qwen3.5-VL loader (only qwen2_vl/qwen3_vl exist). So it very likely
+  won't serve this checkpoint, or won't load it cleanly.
+
+  This is the same class of problem as Gemma 4 — a multimodal checkpoint vs a
+  text-only server. Since it decides the whole plan, I need your call:
+
+⏺ User answered Claude's questions:
+  ⎿  · The new Qwen3.6-27B-MLX-4bit is a vision-language model, and your 
+     text-only mlx_lm.server has no loader for the qwen3.5-VL arch — it likely 
+     won't serve it. How should I handle your 'qwen3.6 27b mlx'? → I only want 
+     to use the ones I have downloaded via LM studio I want them to work with my
+     pi agent config instead of codex reusing the tooling we already have to 
+     make sure this all works cleanly together
+
+⏺ Got it — that changes the target. You want these models wired to your pi agent
+  config (not Codex), reusing the existing tooling (LiteLLM bridge, mlx-model
+  CLI) so it all works together, and you only care about the models you
+  downloaded via LM Studio.
+
+  Before I plan that, I need to find your pi agent config and see how it points
+  at models. Let me locate it.
+
+⏺ Bash(echo "=== likely pi-agent config locations ==="
+      for p in ~/.config/pi ~/.pi ~/.config/pi-agent ~/.pi-agent ~/pi
+      ~/.config/pydantic-ai ~/.config/pyagent; do…)
+  ⎿  === likely pi-agent config locations ===
+     FOUND: /Users/brown/.pi
+     total 0
+     … +10 lines (ctrl+o to expand)
+
+⏺ Found it — ~/.pi/agent and a ~/projects/pi-agent-config repo. Let me look at
+  how the pi agent is configured and where it points for models/providers.
+
+⏺ Bash(echo "=== ~/.pi/agent tree ==="
+      find /Users/brown/.pi/agent -maxdepth 2 2>/dev/null…)
+  ⎿  === ~/.pi/agent tree ===
+     /Users/brown/.pi/agent
+     /Users/brown/.pi/agent/trust.json
+     … +51 lines (ctrl+o to expand)
+
+⏺ This is a real existing system — the pi agent has its own
+  ~/.pi/agent/models.json, and the pi-agent-config repo already has mlx-local
+  history. Let me read how it wires models so I plan against the actual schema.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I understand the pi agent's schema — and a key fact: the pi agent talks 
+  openai-completions (Chat) directly, so it doesn't need the LiteLLM/Responses
+  bridge that Codex required. It has two providers: lmstudio (LM Studio's own
+  server on :1234) and mlx-local (an mlx_lm.server on :8080, not our :18080).
+
+  Let me check what's actually running on those ports and read how the
+  pi-agent-config repo manages this, so my plan matches reality.
+
+⏺ Bash(echo "=== what's listening (1234 / 8080 / 18080 / 4000) ==="
+      for port in 1234 8080 18080 4000; do…)
+  ⎿  === what's listening (1234 / 8080 / 18080 / 4000) ===
+     1234:  no response
+     8080:  responds /v1/models
+     … +19 lines (ctrl+o to expand)
+
+⏺ Key findings reshaping everything:
+  - :1234 (LM Studio's own server) is NOT running — so the pi lmstudio provider
+  is currently dead.
+  - :8080 is Docker, not MLX — so the pi mlx-local provider is pointed at the
+  wrong thing (its mlx-server.sh port got squatted by Docker).
+  - Our working tooling is on :18080 (mlx_lm.server, managed by mlx-model) +
+  :4000 (LiteLLM).
+  - The repo already has scripts/mlx-server.sh,
+  pi-config/scripts/mlx-server.fish, scripts/sync-lmstudio-models.py, and a
+  tracked pi-config/models.json.
+
+  "Reusing the tooling we already have" now makes sense: point the pi agent at
+  our live mlx_lm.server instead of the dead :1234 / Docker-squatted :8080. Let
+  me read the repo's architecture and existing scripts so I plan in line with
+  what's there.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Let me read the existing MLX server scripts and the LM Studio sync script —
+  these are the "tooling we already have" the user wants to reuse.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I have the full architecture. Let me note a critical detail and check the
+  two 27B candidates' actual sizes, because it bears on which one you'd
+  realistically run.
+
+  Key facts assembled:
+  - The repo's mlx-server.sh/.fish (the :8080 "mlx-local" tooling) are
+  bit-rotted: they point at ~/projects/mac-mlx-env (the venv I deleted) and at
+  model paths that no longer exist (Youssofal/...-Optimized-Speed without -FP16,
+  and mlx-community/Qwen3.5-9B-OptiQ-4bit). And :8080 is now held by Docker. So
+  that path is dead.
+  - Our working tooling is mlx_lm.server on :18080 (Homebrew, managed by
+  mlx-model, hot-swap). The pi agent speaks openai-completions (Chat) — which
+  mlx_lm.server serves natively, so pi needs no LiteLLM bridge.
+
+⏺ Bash(echo "=== 27B candidate sizes / quant ==="
+      for d in /Users/brown/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimiz
+      ed-Speed-FP16 /Users/brown/.lmstudio/models…)
+  ⎿  === 27B candidate sizes / quant ===
+     --- /Users/brown/.lmstudio/models/Youssofal/Qwen3.6-27B-MTPLX-Optimize
+     d-Speed-FP16
+     … +14 lines (ctrl+o to expand)
+
+❯ I belive we had image passing working on pi agent before I would like to keep 
+  this as working solution in LM studio both downloaded models support vision   
+  we should keep that in mind if we want to swap the MLX backend and also maybe 
+  be able to use speclivte decoding to speed up inference                       
+
+⏺ This reframes the whole thing. Critically: both 27B models are vision-language
+  (the Youssofal "FP16" is actually 4-bit, 15 GB, and also
+  Qwen3_5ForConditionalGeneration with a vision_config — same as the new one).
+  And you want to keep image-passing working via LM Studio and ideally add
+  speculative decoding. That points away from our text-only mlx_lm.server. Let
+  me gather the last facts I need (is the 9B also vision? what does LM Studio
+  support? any draft models on disk?) before I lay out options.
+
+⏺ Bash(echo "=== does the 9B support vision? ==="
+      python3 -c "import json;c=json.load(open('/Users/brown/.lmstudio/models/ni
+      ghtmedia/Qwen3.5-9B-TNG-PKD-Qwopus-Coder-Fa…)
+  ⎿  === does the 9B support vision? ===
+       vision_config present: True | arch: ['Qwen3_5ForConditionalGeneratio
+     n']
+     … +19 lines (ctrl+o to expand)
+❯ re use mlx-local-llm as the wrapper but target pi agent and not codex         
+
+⏺ Now the full picture is clear, and your latest two messages resolve the
+  direction. Let me state what I found, then confirm the few architectural forks
+  before I write the plan.
+
+  Key discovery: All three Qwen models are vision-language models
+  (Qwen3_5ForConditionalGeneration, each has a vision_config) — the 9B coder,
+  the Youssofal 27B, and the new lmstudio-community 27B. So vision isn't a
+  special case; it's every model. And:
+  - LM Studio is installed (/Applications/LM Studio.app + lms CLI) — that's your
+  proven vision backend, and it also supports speculative decoding (draft
+  models).
+  - Our mlx_lm.server (:18080) is text-only — it cannot do image passing at all.
+  - Pi speaks openai-completions (Chat) directly, so it needs no LiteLLM bridge
+  (that was a Codex-only requirement).
+  - The repo's old :8080 mlx-server scripts are dead (deleted venv + stale paths
+  + Docker squatting the port).
+
+  Your instruction is "reuse mlx-local-llm as the wrapper, target pi not Codex"
+  while keeping vision (LM Studio) and ideally speculative decoding. There are a
+  few ways to wire that, and they materially change the plan — let me get your
+  calls:
+
+⏺ User answered Claude's questions:
+  ⎿  · All 3 Qwen models are vision-capable and you want image passing kept. 
+     What backend should the repurposed mlx-local-llm wrapper drive for the pi 
+     agent? → best setup for agentic coding 
+     · We're targeting pi instead of Codex. What should happen to the 
+     Codex-specific pieces (LiteLLM on :4000, the Codex profiles in ~/.codex, 
+     the model-catalog)? → Remove them
+     · Which models should the cleaned-up pi config keep? (Gemma + the 
+     unsupported gemma/stale entries get dropped either way.) → 9B + both 27Bs
+
+⏺ You've left the backend to my judgment ("best setup for agentic coding").
+  Given all three models are vision-capable, you want image passing kept, and
+  you want speculative decoding — LM Studio's server (:1234) is the clear best 
+  choice: it's the only backend that delivers reliable tool-calling + vision +
+  speculative decoding (draft models) in one stable server, and it's already
+  your proven vision solution. Our mlx_lm.server is text-only (kills vision);
+  mlx-vlm has no easy spec-decoding and rougher tooling. So: LM Studio backend, 
+  mlx-local-llm repurposed to drive it for pi, Codex stack removed, keep 9B + 
+  both 27Bs.
+
+  Let me verify the lms CLI capabilities so the plan is accurate (these are
+  read-only).
+
+⏺ Bash(export PATH="$HOME/.lmstudio/bin:$PATH"
+      echo "=== lms server status ==="; lms server status 2>&1 | head…)
+  ⎿  === lms server status ===
+     The server is not running.
+     … +51 lines (ctrl+o to expand)
+
+⏺ Very useful — and it surfaces a constraint that affects your "both 27Bs"
+  choice. LM Studio currently indexes only two LLMs:
+  - qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx (5.70 GB) — your 9B
+  - qwen/qwen3.6-27b (16.08 GB) — the new lmstudio-community 27B
+
+  The Youssofal 27B is not visible to LM Studio (it wasn't pulled through LM
+  Studio, so lms won't load it as-is). Good news on your other ask: speculative
+  decoding is fully supported at load time — --speculative-draft-mtp (and the
+  Youssofal build is literally an MTP build) and --speculative-draft-simple 
+  --speculative-draft-model <draft>, plus -c/--context-length, --ttl,
+  --identifier for clean scripting.
+
+  Let me check whether lms can import the Youssofal dir so I can honor "both
+  27Bs," then I'll finalize.
+
+⏺ Bash(export PATH="$HOME/.lmstudio/bin:$PATH"
+      echo "=== lms top-level commands ==="; lms --help 2>&1 | sed -n '1,60p'…)
+  ⎿  === lms top-level commands ===
+     Usage: lms [options] [command]
+     … +55 lines (ctrl+o to expand)
+
+⏺ lms import exists (supports --symbolic-link to keep originals in place), so I
+  can attempt to surface the Youssofal 27B to LM Studio — though MLX models are
+  multi-file directories and import targets a file, so that one's best-effort.
+  Everything else is confirmed. Let me write the final plan.
+
+⏺ Updated plan
+  ⎿  Error writing file
+
+❯ just use the LM studio models                                                 
+
+⏺ The user just simplified things: "just use the LM Studio models" — so drop the
+  Youssofal import effort entirely and keep exactly what LM Studio indexes (the
+  9B + the lmstudio-community 27B). Let me read the existing plan file, then
+  write the finalized version.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I'll overwrite the stale Codex plan with the finalized LM Studio / pi
+  plan, incorporating "just use the LM Studio models" (drop the Youssofal import
+  — keep exactly the two LM Studio indexes).
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Plan finalized. Here's the summary for approval:
+
+  Repurpose mlx-local-llm to drive LM Studio for the pi agent, drop Codex.
+
+  - Backend: LM Studio server (:1234) — the one option that does tool-calling +
+  vision + speculative decoding. Pi speaks Chat directly, so no LiteLLM needed.
+  - Models: exactly the two LM Studio already indexes — qwen3.5-9b-...-mlx (9B)
+  and qwen/qwen3.6-27b (the new lmstudio-community 27B). Gemma, the Youssofal
+  27B, and the HF-cache 35B are dropped.
+  - Rewrite mlx-model CLI + models.json to register pi/LM Studio models
+  (list/status/use/default/sync now drive lms + write ~/.pi/agent/models.json),
+  with vision (input:["text","image"]) and optional --speculative-draft-mtp.
+  - Rewrite pi config: clean lmstudio provider, remove the dead :8080 mlx-local
+  provider and Gemma entries.
+  - Tear down Codex stack: LiteLLM (:4000) + mlx_lm.server (:18080) launchd
+  agents, ~/.codex mlx profiles/catalog, litellm.config.yaml.
+  - Docs/completions updated; pi-agent-config repo template + dead mlx-server
+  scripts cleaned on a branch (you commit).
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/proposed-plan-crispy-flame.md · /plan to 
+     edit
+     Repurpose mlx-local-llm to Drive LM Studio for the pi Agent (drop Codex)
+
+     Context
+
+     The ~/mlx-local-llm/ wrapper (mlx-model CLI) was built to serve text-only
+     Qwen models to
+     Codex via mlx_lm.server (:18080) → LiteLLM (:4000, Responses→Chat bridge).
+     Requirements have
+     since changed:
+
+     - The consumer is now the pi agent (~/.pi/agent/), not Codex. Pi speaks the
+     OpenAI
+     Chat Completions API directly (api: "openai-completions"), so LiteLLM is 
+     unnecessary.
+     - The Qwen models are vision-language (Qwen3_5ForConditionalGeneration +
+     vision_config), and
+     image passing must keep working. mlx_lm.server is text-only and cannot do
+     vision.
+     LM Studio's server (:1234) is the proven vision backend and lms load
+     natively supports
+     speculative decoding (--speculative-draft-mtp, --speculative-draft-simple 
+     --speculative-draft-model) plus -c/--context-length, --ttl, --identifier.
+     So for the best
+     agentic-coding setup (tool-calling + vision + spec decoding in one stable
+     server), LM Studio is
+     the backend.
+     - Per "just use the LM Studio models": the kept set is exactly what lms ls
+     already indexes — no
+     importing of dirs LM Studio doesn't recognize.
+
+     Goal: repurpose mlx-local-llm as the wrapper that registers models and
+     drives LM Studio for
+     the pi agent, remove all Codex-specific pieces, and clean the model set
+     down to the two
+     LM-Studio-indexed Qwen models.
+
+     Target architecture
+
+     pi agent ──openai-completions──▶ LM Studio server (127.0.0.1:1234/v1)
+        ▲  ~/.pi/agent/models.json        │ loads model via `lms load` (vision +
+     spec-decoding)
+        │  (lmstudio provider)            ▼
+     mlx-model CLI ── sync ──▶ pi config   ~/.lmstudio/models/...
+                   └─ load/status ─▶ `lms` CLI + :1234
+     One backend (LM Studio). No LiteLLM, no mlx_lm.server, no ~/.codex.
+
+     Confirmed facts (from lms)
+
+     - LM Studio installed (/Applications/LM Studio.app, ~/.lmstudio/bin/lms);
+     server currently
+     stopped. lms ls indexes exactly two LLMs — the kept set:
+       - qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx (5.70 GB) — the 9B
+     coder.
+       - qwen/qwen3.6-27b (16.08 GB) — the lmstudio-community
+     Qwen3.6-27B-MLX-4bit.
+     - Model ids in pi config must match LM Studio's GET /v1/models keys exactly
+     (per repo AGENTS.md).
+     - The Youssofal 27B, the Gemma models, and the HF-cache 35B are not LM
+     Studio models → not used.
+
+     Work
+
+     1. Rewrite the registry — /Users/brown/mlx-local-llm/models.json
+
+     New schema keyed to LM Studio + pi (drop filesystem-path/stop-token
+     fields):
+     {
+       "provider": "lmstudio",
+       "base_url": "http://localhost:1234/v1",
+       "default_model": "qwen/qwen3.6-27b",
+       "models": [
+
+     {"id":"qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx","name":"Qwen3.5 
+     9B Coder",
+          "input":["text","image"],"contextWindow":65536,"reasoning":true,
+          "compat":{"thinkingFormat":"qwen"},"spec":{"mtp":true}},
+         {"id":"qwen/qwen3.6-27b","name":"Qwen3.6 27B",
+          "input":["text","image"],"contextWindow":32768,"reasoning":true,
+          "compat":{"thinkingFormat":"qwen","supportsDeveloperRole":false},"spec
+     ":{"mtp":true}}
+       ]
+     }
+
+     2. Rewrite the CLI — /Users/brown/mlx-local-llm/bin/mlx-model
+
+     Keep the bash skeleton + python3 JSON helpers + subcommand UX; replace all
+     Codex/LiteLLM/mlx_lm.server logic with LM Studio + pi logic:
+
+     ┌───────────────┬─────────────────────────────────────────────────────────┐
+     │      cmd      │                      new behavior                       │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ list          │ registered models + cross-check lms ls (on disk) + lms  │
+     │               │ ps (loaded); mark default.                              │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ status        │ lms server status, curl :1234/v1/models, pi default     │
+     │               │ provider/model.                                         │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ scan          │ lms ls → indexed LLMs not yet registered.               │
+     │ [--add-all]   │                                                         │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ add <lms-key> │ register (default input:["text","image"],               │
+     │               │ thinkingFormat:"qwen"), then sync.                      │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ remove <id>   │ drop from registry, then sync.                          │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ use <id>      │ lms server start if down; lms load <id> -c <ctx>        │
+     │ (alias load)  │ --identifier <id> -y (+ spec flags from spec); warms    │
+     │               │ the model.                                              │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │ default <id>  │ set pi settings.json defaultProvider="lmstudio" +       │
+     │               │ defaultModel=<id>.                                      │
+     ├───────────────┼─────────────────────────────────────────────────────────┤
+     │               │ regenerate the lmstudio provider block in               │
+     │ sync          │ ~/.pi/agent/models.json from registry; ensure lms       │
+     │               │ server start; mirror to repo template (step 6).         │
+     └───────────────┴─────────────────────────────────────────────────────────┘
+
+     Speculative decoding: when a model's spec.mtp is set, use adds
+     --speculative-draft-mtp; support
+     optional spec.draftModel → --speculative-draft-simple 
+     --speculative-draft-model <key> (requires a
+     downloaded draft via lms get — optional follow-up; none on disk yet).
+
+     3. Rewrite pi config — ~/.pi/agent/models.json
+
+     Back up first (.bak.<ts>), then:
+     - Remove the dead mlx-local provider (:8080, Docker-squatted, stale path).
+     - Rebuild the lmstudio provider (http://localhost:1234/v1,
+     apiKey:"lm-studio") to contain only
+     the two kept Qwen models with input:["text","image"], matching
+     contextWindow,
+     thinkingFormat:"qwen". Remove all Gemma entries.
+     - ~/.pi/agent/settings.json: set defaultModel to a kept id (default
+     qwen/qwen3.6-27b),
+     defaultProvider:"lmstudio".
+
+     4. Decommission the Codex stack
+
+     - launchctl bootout gui/$(id -u)/com.brown.litellm-mlx and
+     …/com.brown.mlx-qwen9b; delete both
+     plists in ~/Library/LaunchAgents/. (Retires LiteLLM :4000 and text-only
+     mlx_lm.server :18080.)
+     - Delete generated ~/.codex/mlx-*.config.toml profiles and
+     ~/.codex/model-catalogs/mlx-local.json.
+     - Delete ~/mlx-local-llm/litellm.config.yaml.
+
+     5. Docs / completions
+
+     - Rewrite /Users/brown/mlx-local-llm/README.md for the LM-Studio/pi
+     architecture.
+     - Update /Users/brown/.config/fish/completions/mlx-model.fish (slugs now
+     read id from the new
+     models.json; reflect any subcommand changes).
+
+     6. pi-agent-config repo (git-tracked — branch, leave committing to user)
+
+     - Update the tracked template pi-config/models.json to match the new live
+     config.
+     - Remove/deprecate the dead scripts/mlx-server.sh +
+     pi-config/scripts/mlx-server.fish (they point
+     at the deleted ~/projects/mac-mlx-env venv and the squatted :8080).
+
+     Verification
+
+     1. mlx-model status → LM Studio server up, :1234/v1/models lists the two
+     Qwen models.
+     2. mlx-model use qwen/qwen3.6-27b → lms ps shows it loaded at the chosen
+     context (with MTP spec
+     decoding if the model supports it).
+     3. Vision: launch pi (lmstudio provider, a Qwen model), send a prompt with
+     an image; confirm the
+     model receives/answers about the image.
+     4. Spec decoding: confirm lms load … --speculative-draft-mtp loads without
+     error (or reports
+     "not supported"); sanity-check tok/s.
+     5. Codex gone: curl :4000/v1/models fails; launchctl list | grep -E 
+     'litellm|qwen9b' empty;
+     ~/.codex has no generated mlx profiles/catalog.
+     6. mlx-model list matches the pi lmstudio provider block; mlx-model default
+     flips pi's default.
+
+⏺ Plan approved. Let me set up task tracking and read the current CLI (I'll
+  rewrite it, but need to match its UX/structure).
+⏺ Now let me read the current CLI in full so the rewrite preserves its structure
+  and helper patterns.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I have the full structure. Let me start implementing. Task 1: rewrite the
+  registry.
+
+⏺ Write(~/mlx-local-llm/models.json)
+  ⎿  Error writing file
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I'll write the new registry.
+
+⏺ Write(~/mlx-local-llm/models.json)
+  ⎿  Added 18 lines, removed 37 lines
+       1  {
+       2 -  "default_model": "mlx-qwen9b",                               
+       2 +  "provider": "lmstudio",                                      
+       3 +  "base_url": "http://localhost:1234/v1",                      
+       4 +  "api_key": "lm-studio",                                      
+       5 +  "default_model": "qwen/qwen3.6-27b",                         
+       6    "models": [
+       7      {
+       5 -      "slug": "mlx-qwen9b",                                    
+       6 -      "name": "Qwen 3.5 9B Coder MLX",                         
+       7 -      "path": "/Users/brown/.lmstudio/models/nightmedia/Qwen3.5
+         --9B-TNG-PKD-Qwopus-Coder-Fable-Polaris-mxfp4-mlx",             
+       8 -      "context_window": 65536,                                 
+       9 -      "max_context": 262144,                                   
+      10 -      "stop": [                                                
+      11 -        "<|im_end|>"                                           
+      12 -      ]                                                        
+       8 +      "id": "qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx"
+         +,                                                              
+       9 +      "name": "Qwen3.5 9B Coder",                              
+      10 +      "input": ["text", "image"],                              
+      11 +      "contextWindow": 65536,                                  
+      12 +      "reasoning": true,                                       
+      13 +      "compat": { "thinkingFormat": "qwen" },                  
+      14 +      "spec": { "mtp": true }                                  
+      15      },
+      16      {
+      15 -      "slug": "mlx-qwen27b",                                   
+      16 -      "name": "Qwen 3.6 27B MTPLX (4bit)",                     
+      17 -      "path": "/Users/brown/.lmstudio/models/Youssofal/Qwen3.6-
+         -27B-MTPLX-Optimized-Speed-FP16",                               
+      18 -      "context_window": 65536,                                 
+      19 -      "max_context": 262144,                                   
+      20 -      "stop": [                                                
+      21 -        "<|im_end|>"                                           
+      22 -      ]                                                        
+      23 -    },                                                         
+      24 -    {                                                          
+      25 -      "slug": "mlx-qwen35b-moe",                               
+      26 -      "name": "Qwen 3.6 35B A3B MoE MLX 4bit",                 
+      27 -      "path": "/Users/brown/.cache/huggingface/hub/models--unsl
+         -oth--Qwen3.6-35B-A3B-UD-MLX-4bit/snapshots/6700c3e5bdeb050a379c
+         -8d2a4133f43f3647f20f",                                         
+      28 -      "context_window": 65536,                                 
+      29 -      "max_context": 262144,                                   
+      30 -      "stop": [                                                
+      31 -        "<|im_end|>"                                           
+      32 -      ]                                                        
+      33 -    },                                                         
+      34 -    {                                                          
+      35 -      "slug": "mlx-gemma-4-12b-it-qat-mxfp4",                  
+      36 -      "name": "gemma-4-12B-it-qat-MXFP4",                      
+      37 -      "path": "/Users/brown/.lmstudio/models/OsaurusAI/gemma-4-
+         -12B-it-qat-MXFP4",                                             
+      38 -      "context_window": 65536,                                 
+      39 -      "max_context": 262144,                                   
+      40 -      "stop": [                                                
+      41 -        "<eos>"                                                
+      42 -      ]                                                        
+      17 +      "id": "qwen/qwen3.6-27b",                                
+      18 +      "name": "Qwen3.6 27B",                                   
+      19 +      "input": ["text", "image"],                              
+      20 +      "contextWindow": 32768,                                  
+      21 +      "reasoning": true,                                       
+      22 +      "compat": { "thinkingFormat": "qwen", "supportsDeveloperR
+         +ole": false },                                                 
+      23 +      "spec": { "mtp": true }                                  
+      24      }
+      25    ]
+      26  }
+
+⏺ Now the core rewrite — the CLI. Let me write it to drive lms + pi config.
+
+⏺ Write(~/mlx-local-llm/bin/mlx-model)
+  ⎿  Added 220 lines, removed 269 lines
+        1  #!/usr/bin/env bash
+        2 -# mlx-model — manage the local MLX-LM models served to Codex. 
+        2 +# mlx-model — manage the local LM Studio models served to the 
+          +pi agent.                                                     
+        3  # Source of truth: ~/mlx-local-llm/models.json
+        4 -# Generates: ~/mlx-local-llm/litellm.config.yaml, ~/.codex/mod
+          -el-catalogs/mlx-local.json,                                   
+        5 -#            ~/.codex/<slug>.config.toml (one Codex profile pe
+          -r model).                                                     
+        4 +# Drives:  LM Studio (`lms` CLI + server on :1234)            
+        5 +# Writes:  ~/.pi/agent/models.json (lmstudio provider) and ~/.
+          +pi/agent/settings.json (defaults)                             
+        6  set -euo pipefail
+        7  
+        8  MLX_DIR="${MLX_DIR:-$HOME/mlx-local-llm}"
+        9  REGISTRY="$MLX_DIR/models.json"
+       10 -LITELLM_CONFIG="$MLX_DIR/litellm.config.yaml"                 
+       11 -CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"                      
+       12 -CATALOG="$CODEX_HOME/model-catalogs/mlx-local.json"           
+       10  
+       14 -MLX_LABEL="com.brown.mlx-qwen9b"                              
+       15 -LITELLM_LABEL="com.brown.litellm-mlx"                         
+       16 -MLX_PLIST="$HOME/Library/LaunchAgents/$MLX_LABEL.plist"       
+       17 -MLX_LOG="$HOME/Library/Logs/mlx-qwen9b.log"                   
+       11 +PI_DIR="${PI_DIR:-$HOME/.pi/agent}"                           
+       12 +PI_MODELS="$PI_DIR/models.json"                               
+       13 +PI_SETTINGS="$PI_DIR/settings.json"                           
+       14  
+       19 -MLX_BASE="http://127.0.0.1:18080"                             
+       20 -LITELLM_BASE="http://127.0.0.1:4000"                          
+       21 -                                                              
+       15 +LMS="${LMS:-$HOME/.lmstudio/bin/lms}"                         
+       16  PY="$(command -v python3)"
+       17  
+       18  die() { echo "mlx-model: $*" >&2; exit 1; }
+       25 -[ -f "$REGISTRY" ] || die "registry not found: $REGISTRY (run 
+          -the installer first)"                                         
+       19 +[ -f "$REGISTRY" ] || die "registry not found: $REGISTRY"     
+       20 +[ -x "$LMS" ] || die "lms CLI not found at $LMS (is LM Studio 
+          +installed?)"                                                  
+       21  
+       27 -reg_get() { # reg_get <slug> <field>                          
+       28 -  REGISTRY="$REGISTRY" MSLUG="$1" MFIELD="$2" "$PY" -c "      
+       22 +base_url() { "$PY" -c "import json;print(json.load(open('$REGI
+          +STRY')).get('base_url','http://localhost:1234/v1'))"; }       
+       23 +default_model() { "$PY" -c "import json;print(json.load(open('
+          +$REGISTRY')).get('default_model') or '')"; }                  
+       24 +                                                              
+       25 +# get a single field for a model id (handles ids containing '/
+          +')                                                            
+       26 +reg_get() { # reg_get <id> <field>                            
+       27 +  REGISTRY="$REGISTRY" MID="$1" MFIELD="$2" "$PY" -c "        
+       28  import json,os
+       29  reg=json.load(open(os.environ['REGISTRY']))
+       31 -m=[x for x in reg['models'] if x['slug']==os.environ['MSLUG']]
+       32 -print(m[0].get(os.environ['MFIELD'],'') if m else '')"        
+       30 +m=[x for x in reg['models'] if x['id']==os.environ['MID']]    
+       31 +v=m[0].get(os.environ['MFIELD'],'') if m else ''              
+       32 +print(v if not isinstance(v,(dict,list)) else json.dumps(v))" 
+       33  }
+       34  
+       35 -# ---- regenerate all derived config from models.json, then re
+          -load LiteLLM ----                                             
+       35 +# ---- regenerate the pi lmstudio provider from models.json, r
+          +econcile defaults ----                                        
+       36  cmd_sync() {
+       37 -  REGISTRY="$REGISTRY" LITELLM_CONFIG="$LITELLM_CONFIG" \     
+       38 -  CODEX_HOME="$CODEX_HOME" CATALOG="$CATALOG" "$PY" - <<'PY'  
+       37 +  REGISTRY="$REGISTRY" PI_MODELS="$PI_MODELS" PI_SETTINGS="$PI
+          +_SETTINGS" "$PY" - <<'PY'                                     
+       38  import json, os, pathlib
+       39  
+       40  reg = json.load(open(os.environ["REGISTRY"]))
+       41  models = reg.get("models", [])
+       43 -codex_home = os.environ["CODEX_HOME"]                         
+       44 -catalog_path = os.environ["CATALOG"]                          
+       45 -litellm_path = os.environ["LITELLM_CONFIG"]                   
+       46 -MLX_API = "http://127.0.0.1:18080/v1"                         
+       47 -LITELLM_URL = "http://127.0.0.1:4000/v1"                      
+       42 +ids = [m["id"] for m in models]                               
+       43 +pi_models_path = pathlib.Path(os.environ["PI_MODELS"])        
+       44 +pi_settings_path = pathlib.Path(os.environ["PI_SETTINGS"])    
+       45  
+       49 -# --- LiteLLM config ---                                      
+       50 -lines = ["model_list:"]                                       
+       51 -for m in models:                                              
+       52 -    stops = json.dumps(m.get("stop", []))                     
+       53 -    lines += [                                                
+       54 -        f"  - model_name: {m['slug']}",                       
+       55 -        f"    litellm_params:",                               
+       56 -        f"      model: openai/chat_completions/{m['path']}",  
+       57 -        f"      api_base: {MLX_API}",                         
+       58 -        f"      api_key: fake-key",                           
+       59 -        f"      stop: {stops}",                               
+       60 -    ]                                                         
+       61 -lines += ["", "litellm_settings:", "  drop_params: true", ""] 
+       62 -pathlib.Path(litellm_path).write_text("\n".join(lines))       
+       46 +# --- pi models.json: rebuild the lmstudio provider, drop the 
+          +dead mlx-local one ---                                        
+       47 +cfg = json.loads(pi_models_path.read_text()) if pi_models_path
+          +.exists() else {}                                             
+       48 +cfg.setdefault("providers", {})                               
+       49  
+       64 -# --- Codex catalog (one entry per model) ---                 
+       65 -def catalog_entry(m, i):                                      
+       66 -    ctx = int(m["context_window"])                            
+       67 -    return {                                                  
+       68 -        "slug": m["slug"], "display_name": m["name"],         
+       69 -        "description": f"Local MLX-LM model ({m['path']}).",  
+       70 -        "default_reasoning_level": None, "supported_reasoning_
+          -levels": [],                                                  
+       71 -        "shell_type": "shell_command", "visibility": "list", "
+          -supported_in_api": False,                                     
+       72 -        "priority": 1000 + i, "additional_speed_tiers": [], "s
+          -ervice_tiers": [],                                            
+       73 -        "availability_nux": None, "upgrade": None, "base_instr
+          -uctions": "",                                                 
+       74 -        "supports_reasoning_summaries": False, "default_reason
+          -ing_summary": "none",                                         
+       75 -        "support_verbosity": False, "default_verbosity": "low"
+          -,                                                             
+       76 -        "apply_patch_tool_type": "freeform", "web_search_tool_
+          -type": "text",                                                
+       77 -        "truncation_policy": {"mode": "tokens", "limit": ctx},
+       78 -        "supports_parallel_tool_calls": False, "supports_image
+          -_detail_original": False,                                     
+       79 -        "context_window": ctx, "max_context_window": ctx,     
+       80 -        "effective_context_window_percent": 100, "experimental
+          -_supported_tools": [],                                        
+       81 -        "input_modalities": ["text"], "supports_search_tool": 
+          -False, "use_responses_lite": False,                           
+       50 +def pi_entry(m):                                              
+       51 +    e = {                                                     
+       52 +        "id": m["id"],                                        
+       53 +        "input": m.get("input", ["text"]),                    
+       54 +        "contextWindow": m["contextWindow"],                  
+       55 +        "reasoning": m.get("reasoning", True),                
+       56      }
+       83 -catalog = {"models": [catalog_entry(m, i) for i, m in enumerat
+          -e(models)]}                                                   
+       84 -pathlib.Path(catalog_path).write_text(json.dumps(catalog, inde
+          -nt=2) + "\n")                                                 
+       57 +    name = m.get("name")                                      
+       58 +    if name:                                                  
+       59 +        e["name"] = name                                      
+       60 +    if m.get("compat"):                                       
+       61 +        e["compat"] = m["compat"]                             
+       62 +    return e                                                  
+       63  
+       86 -# --- Codex profiles: one per model ---                       
+       87 -def profile_toml(slug):                                       
+       88 -    return (f'model = "{slug}"\n'                             
+       89 -            f'model_provider = "mlx_local"\n'                 
+       90 -            f'model_catalog_json = "{catalog_path}"\n'        
+       91 -            f'web_search = "disabled"\n'                      
+       92 -            f'model_supports_reasoning_summaries = false\n\n' 
+       93 -            f'[model_providers.mlx_local]\n'                  
+       94 -            f'name = "MLX-LM local"\n'                        
+       95 -            f'base_url = "{LITELLM_URL}"\n')                  
+       96 -for m in models:                                              
+       97 -    (pathlib.Path(codex_home) / f"{m['slug']}.config.toml").wr
+          -ite_text(profile_toml(m["slug"]))                             
+       64 +cfg["providers"]["lmstudio"] = {                              
+       65 +    "baseUrl": reg.get("base_url", "http://localhost:1234/v1")
+          +,                                                             
+       66 +    "api": "openai-completions",                              
+       67 +    "apiKey": reg.get("api_key", "lm-studio"),                
+       68 +    "models": [pi_entry(m) for m in models],                  
+       69 +}                                                             
+       70 +cfg["providers"].pop("mlx-local", None)  # dead :8080 provider
+       71 +pi_models_path.write_text(json.dumps(cfg, indent=2) + "\n")   
+       72  
+       99 -print(f"synced {len(models)} model(s): " + ", ".join(m["slug"]
+          - for m in models))                                            
+       73 +# --- pi settings.json: keep the default valid + pointed at lm
+          +studio ---                                                    
+       74 +if pi_settings_path.exists():                                 
+       75 +    st = json.loads(pi_settings_path.read_text())             
+       76 +    changed = False                                           
+       77 +    if st.get("defaultModel") not in ids:                     
+       78 +        st["defaultModel"] = reg.get("default_model") or (ids[
+          +0] if ids else None)                                          
+       79 +        st["defaultProvider"] = "lmstudio"                    
+       80 +        changed = True                                        
+       81 +    if changed:                                               
+       82 +        pi_settings_path.write_text(json.dumps(st, indent=2) +
+          + "\n")                                                        
+       83 +                                                              
+       84 +print(f"synced {len(models)} model(s) to pi lmstudio provider:
+          + " + ", ".join(ids))                                          
+       85  PY
+      101 -  if launchctl kickstart -k "gui/$(id -u)/$LITELLM_LABEL" >/de
+          -v/null 2>&1; then                                             
+      102 -    echo "reloaded LiteLLM ($LITELLM_LABEL)"                  
+       86 +  # Make sure the LM Studio server pi talks to is actually up.
+       87 +  if "$LMS" server start >/dev/null 2>&1; then                
+       88 +    echo "LM Studio server: running on $(base_url)"           
+       89    else
+      104 -    echo "warning: could not reload LiteLLM service (is it boo
+          -tstrapped?)" >&2                                              
+       90 +    echo "warning: could not start LM Studio server (start LM 
+          +Studio.app once)" >&2                                         
+       91    fi
+       92  }
+       93  
+      108 -# ---- add a model to the registry, then sync ----            
+       94 +# ---- list registered models, cross-checked against lms ls / 
+          +lms ps ----                                                   
+       95 +cmd_list() {                                                  
+       96 +  local on_disk loaded                                        
+       97 +  on_disk="$("$LMS" ls 2>/dev/null || true)"                  
+       98 +  loaded="$("$LMS" ps 2>/dev/null || true)"                   
+       99 +  REGISTRY="$REGISTRY" ONDISK="$on_disk" LOADED="$loaded" "$PY
+          +" - <<'PY'                                                    
+      100 +import json, os                                               
+      101 +reg = json.load(open(os.environ["REGISTRY"]))                 
+      102 +default = reg.get("default_model")                            
+      103 +on_disk = os.environ.get("ONDISK", "")                        
+      104 +loaded = os.environ.get("LOADED", "")                         
+      105 +rows = []                                                     
+      106 +for m in reg.get("models", []):                               
+      107 +    mid = m["id"]                                             
+      108 +    flags = []                                                
+      109 +    if mid == default: flags.append("default")                
+      110 +    if mid in on_disk: flags.append("on-disk")                
+      111 +    else: flags.append("MISSING")                             
+      112 +    if mid in loaded: flags.append("loaded")                  
+      113 +    rows.append((mid, m.get("name","")[:24], str(m["contextWin
+          +dow"]),                                                       
+      114 +                 "+".join(m.get("input", ["text"])), " ".join(
+          +flags)))                                                      
+      115 +hdr = ("ID","NAME","CTX","INPUT","FLAGS")                     
+      116 +w = [max(len(r[i]) for r in [hdr]+rows) for i in range(5)] if 
+          +rows else [len(h) for h in hdr]                               
+      117 +def fmt(r): return "  ".join(r[i].ljust(w[i]) for i in range(5
+          +))                                                            
+      118 +print(fmt(hdr)); print(fmt(tuple("-"*w[i] for i in range(5))))
+      119 +for r in rows: print(fmt(r))                                  
+      120 +print(f"\n{len(rows)} model(s). Load: mlx-model use <id>   |  
+          + default: mlx-model default <id>")                            
+      121 +PY                                                            
+      122 +}                                                             
+      123 +                                                              
+      124 +# ---- server + endpoint status ----                          
+      125 +cmd_status() {                                                
+      126 +  echo "Registry: $REGISTRY"                                  
+      127 +  echo "Default model: $(default_model)"                      
+      128 +  printf "LM Studio server: "; "$LMS" server status 2>/dev/nul
+          +l || echo "unknown"                                           
+      129 +  local burl; burl="$(base_url)"                              
+      130 +  printf "Endpoint %s/models -> " "$burl"                     
+      131 +  curl -fsS "$burl/models" >/dev/null 2>&1 && echo "ok" || ech
+          +o "DOWN"                                                      
+      132 +  echo "Loaded now:"; "$LMS" ps 2>/dev/null | sed 's/^/  /' ||
+          + true                                                         
+      133 +  if [ -f "$PI_SETTINGS" ]; then                              
+      134 +    "$PY" -c "import json;s=json.load(open('$PI_SETTINGS'));pr
+          +int('pi default:', s.get('defaultProvider'),'/',s.get('default
+          +Model'))"                                                     
+      135 +  fi                                                          
+      136 +}                                                             
+      137 +                                                              
+      138 +# ---- discover LM Studio LLMs not yet registered ----        
+      139 +cmd_scan() {                                                  
+      140 +  local add_all=""; [ "${1:-}" = "--add-all" ] && add_all=1   
+      141 +  local lsout found                                           
+      142 +  lsout="$("$LMS" ls 2>/dev/null || true)"                    
+      143 +  found="$(REGISTRY="$REGISTRY" LSOUT="$lsout" "$PY" - <<'PY' 
+      144 +import json, os, re                                           
+      145 +reg = json.load(open(os.environ["REGISTRY"]))                 
+      146 +known = {m["id"] for m in reg.get("models", [])}              
+      147 +text = os.environ.get("LSOUT", "")                            
+      148 +# Take rows in the LLM section only (stop at the EMBEDDING hea
+          +der).                                                         
+      149 +keys, in_llm = [], False                                      
+      150 +for line in text.splitlines():                                
+      151 +    s = line.strip()                                          
+      152 +    if s.startswith("LLM"): in_llm = True; continue           
+      153 +    if s.startswith("EMBEDDING"): in_llm = False; continue    
+      154 +    if not in_llm or not s: continue                          
+      155 +    tok = s.split()[0]                                        
+      156 +    if "/" in tok or "-" in tok:  # model-key-ish, skip header
+          +s                                                             
+      157 +        key = re.sub(r"\s*\(\d+ variant\)$", "", tok)         
+      158 +        if key and key not in known: keys.append(key)         
+      159 +for k in sorted(set(keys)): print(k)                          
+      160 +PY                                                            
+      161 +)"                                                            
+      162 +  if [ -z "$found" ]; then echo "scan: no unregistered LM Stud
+          +io LLMs found."; return; fi                                   
+      163 +  echo "Unregistered LM Studio LLMs:"; echo "$found" | sed 's/
+          +^/  /'                                                        
+      164 +  if [ -n "$add_all" ]; then                                  
+      165 +    echo; while IFS= read -r k; do [ -n "$k" ] && cmd_add "$k"
+          +; done <<< "$found"                                           
+      166 +  else                                                        
+      167 +    echo; echo "Add one with: mlx-model add <lms-key>   (or re
+          +-run: mlx-model scan --add-all)"                              
+      168 +  fi                                                          
+      169 +}                                                             
+      170 +                                                              
+      171 +# ---- register an LM Studio model key, then sync ----        
+      172  cmd_add() {
+      110 -  local path="" slug="" name="" context=""                    
+      173 +  local id="" name="" context=""                              
+      174    while [ $# -gt 0 ]; do
+      175      case "$1" in
+      113 -      --slug) slug="$2"; shift 2;;                            
+      176        --name) name="$2"; shift 2;;
+      177        --context) context="$2"; shift 2;;
+      178        -*) die "unknown flag: $1";;
+      117 -      *) [ -z "$path" ] && path="$1" && shift || die "unexpect
+          -ed arg: $1";;                                                 
+      179 +      *) [ -z "$id" ] && id="$1" && shift || die "unexpected a
+          +rg: $1";;                                                     
+      180      esac
+      181    done
+      120 -  [ -n "$path" ] || die "usage: mlx-model add <model-dir> [--s
+          -lug s] [--name \"...\"] [--context N]"                        
+      121 -  path="${path%/}"                                            
+      122 -  [ -d "$path" ] || die "not a directory: $path"              
+      123 -  [ -f "$path/config.json" ] || die "no config.json in $path (
+          -not an MLX model dir)"                                        
+      124 -                                                              
+      125 -  REGISTRY="$REGISTRY" MPATH="$path" MSLUG="$slug" MNAME="$nam
+          -e" MCTX="$context" "$PY" - <<'PY'                             
+      126 -import json, os, re                                           
+      127 -                                                              
+      128 -reg_path = os.environ["REGISTRY"]; path = os.environ["MPATH"] 
+      129 -slug = os.environ["MSLUG"].strip(); name = os.environ["MNAME"]
+          -.strip()                                                      
+      130 -ctx_override = os.environ["MCTX"].strip()                     
+      131 -CAP = 65536                                                   
+      132 -cfg = json.load(open(os.path.join(path, "config.json")))      
+      133 -                                                              
+      134 -def get_mpe(d):                                               
+      135 -    out = []                                                  
+      136 -    if isinstance(d, dict):                                   
+      137 -        if isinstance(d.get("max_position_embeddings"), int): 
+          -out.append(d["max_position_embeddings"])                      
+      138 -        tc = d.get("text_config")                             
+      139 -        if isinstance(tc, dict) and isinstance(tc.get("max_pos
+          -ition_embeddings"), int):                                     
+      140 -            out.append(tc["max_position_embeddings"])         
+      141 -    return out                                                
+      142 -mpes = get_mpe(cfg)                                           
+      143 -detected = min(mpes) if mpes else CAP                         
+      144 -context = int(ctx_override) if ctx_override else min(detected,
+          - CAP)                                                         
+      145 -                                                              
+      146 -# stop token = tokenizer eos_token string                     
+      147 -stop, eos_str = [], None                                      
+      148 -tcp = os.path.join(path, "tokenizer_config.json")             
+      149 -if os.path.exists(tcp):                                       
+      150 -    eos = json.load(open(tcp)).get("eos_token")               
+      151 -    eos_str = eos.get("content") if isinstance(eos, dict) else
+          - (eos if isinstance(eos, str) else None)                      
+      152 -if eos_str: stop = [eos_str]                                  
+      153 -                                                              
+      154 -# mismatch warning                                            
+      155 -warn = None                                                   
+      156 -if eos_str:                                                   
+      157 -    eos_ids = cfg.get("eos_token_id")                         
+      158 -    if eos_ids is None and isinstance(cfg.get("text_config"), 
+          -dict):                                                        
+      159 -        eos_ids = cfg["text_config"].get("eos_token_id")      
+      160 -    idset = set(eos_ids if isinstance(eos_ids, list) else ([eo
+          -s_ids] if eos_ids is not None else []))                       
+      161 -    tj = os.path.join(path, "tokenizer.json"); real = None    
+      162 -    if os.path.exists(tj):                                    
+      163 -        try:                                                  
+      164 -            for t in json.load(open(tj)).get("added_tokens", [
+          -]):                                                           
+      165 -                if t.get("content") == eos_str: real = t.get("
+          -id"); break                                                   
+      166 -        except Exception: pass                                
+      167 -    if real is not None and idset and real not in idset:      
+      168 -        warn = f"eos_token {eos_str!r} (id {real}) not in conf
+          -ig eos_token_id {sorted(idset)} — stop override applied; verif
+          -y termination."                                               
+      169 -                                                              
+      170 -if not slug:                                                  
+      171 -    base = re.sub(r"[^a-z0-9]+", "-", os.path.basename(path).l
+          -ower()).strip("-")                                            
+      172 -    slug = base if base.startswith("mlx-") else f"mlx-{base}" 
+      173 -if not name: name = os.path.basename(path)                    
+      174 -                                                              
+      182 +  [ -n "$id" ] || die "usage: mlx-model add <lms-key> [--name 
+          +\"...\"] [--context N]"                                       
+      183 +  REGISTRY="$REGISTRY" MID="$id" MNAME="$name" MCTX="${context
+          +:-32768}" "$PY" - <<'PY'                                      
+      184 +import json, os                                               
+      185 +reg_path = os.environ["REGISTRY"]; mid = os.environ["MID"]    
+      186 +name = os.environ["MNAME"].strip() or mid.split("/")[-1]      
+      187 +ctx = int(os.environ["MCTX"])                                 
+      188  reg = json.load(open(reg_path)); reg.setdefault("models", [])
+      176 -if any(m["slug"] == slug for m in reg["models"]):             
+      177 -    raise SystemExit(f"mlx-model: slug already registered: {sl
+          -ug}")                                                         
+      178 -if any(m["path"] == path for m in reg["models"]):             
+      179 -    raise SystemExit(f"mlx-model: path already registered: {pa
+          -th}")                                                         
+      180 -reg["models"].append({"slug": slug, "name": name, "path": path
+          -,                                                             
+      181 -                      "context_window": context, "max_context"
+          -: detected, "stop": stop})                                    
+      189 +if any(m["id"] == mid for m in reg["models"]):                
+      190 +    raise SystemExit(f"mlx-model: id already registered: {mid}
+          +")                                                            
+      191 +reg["models"].append({                                        
+      192 +    "id": mid, "name": name, "input": ["text", "image"],      
+      193 +    "contextWindow": ctx, "reasoning": True,                  
+      194 +    "compat": {"thinkingFormat": "qwen"}, "spec": {"mtp": True
+          +},                                                            
+      195 +})                                                            
+      196  json.dump(reg, open(reg_path, "w"), indent=2); open(reg_path, 
+           "a").write("\n")
+      183 -print(f"added {slug}  (ctx {context}, max {detected}, stop {st
+          -op})")                                                        
+      184 -if warn: print("  ⚠ " + warn)                                 
+      197 +print(f"added {mid}  (ctx {ctx})")                            
+      198  PY
+      199    cmd_sync
+      200  }
+      201  
+      189 -# ---- remove a model ----                                    
+      202 +# ---- unregister a model ----                                
+      203  cmd_remove() {
+      191 -  local slug="${1:-}"; [ -n "$slug" ] || die "usage: mlx-model
+          - remove <slug>"                                               
+      192 -  REGISTRY="$REGISTRY" MSLUG="$slug" "$PY" - <<'PY'           
+      204 +  local id="${1:-}"; [ -n "$id" ] || die "usage: mlx-model rem
+          +ove <id>"                                                     
+      205 +  REGISTRY="$REGISTRY" MID="$id" "$PY" - <<'PY'               
+      206  import json, os
+      194 -reg_path = os.environ["REGISTRY"]; slug = os.environ["MSLUG"] 
+      207 +reg_path = os.environ["REGISTRY"]; mid = os.environ["MID"]    
+      208  reg = json.load(open(reg_path)); before = len(reg.get("models"
+           , []))
+      196 -reg["models"] = [m for m in reg.get("models", []) if m["slug"]
+          - != slug]                                                     
+      197 -if len(reg["models"]) == before: raise SystemExit(f"mlx-model:
+          - no such slug: {slug}")                                       
+      198 -if reg.get("default_model") == slug:                          
+      199 -    reg["default_model"] = reg["models"][0]["slug"] if reg["mo
+          -dels"] else None                                              
+      209 +reg["models"] = [m for m in reg.get("models", []) if m["id"] !
+          += mid]                                                        
+      210 +if len(reg["models"]) == before: raise SystemExit(f"mlx-model:
+          + no such id: {mid}")                                          
+      211 +if reg.get("default_model") == mid:                           
+      212 +    reg["default_model"] = reg["models"][0]["id"] if reg["mode
+          +ls"] else None                                                
+      213  json.dump(reg, open(reg_path, "w"), indent=2); open(reg_path, 
+           "a").write("\n")
+      201 -print(f"removed {slug}")                                      
+      214 +print(f"removed {mid}")                                       
+      215  PY
+      203 -  rm -f "$CODEX_HOME/$slug.config.toml" && echo "deleted profi
+          -le $CODEX_HOME/$slug.config.toml"                             
+      216    cmd_sync
+      217  }
+      218  
+      207 -# ---- list registered models ----                            
+      208 -cmd_list() {                                                  
+      209 -  local loaded=""                                             
+      210 -  [ -f "$MLX_LOG" ] && loaded="$(grep -aoE '/Users/[^"'\'' ]+'
+          - "$MLX_LOG" 2>/dev/null | tail -1 || true)"                   
+      211 -  REGISTRY="$REGISTRY" LOADED="$loaded" "$PY" - <<'PY'        
+      212 -import json, os, subprocess                                   
+      213 -reg = json.load(open(os.environ["REGISTRY"])); default = reg.g
+          -et("default_model")                                           
+      214 -loaded = os.environ.get("LOADED", "")                         
+      215 -rows = []                                                     
+      216 -for m in reg.get("models", []):                               
+      217 -    size = "?"                                                
+      218 -    try:                                                      
+      219 -        o = subprocess.run(["du","-sh",m["path"]], capture_out
+          -put=True, text=True, timeout=10)                              
+      220 -        if o.returncode == 0: size = o.stdout.split("\t")[0].s
+          -trip()                                                        
+      221 -    except Exception: pass                                    
+      222 -    flags = []                                                
+      223 -    if m["slug"] == default: flags.append("default")          
+      224 -    if loaded and loaded in m["path"]: flags.append("loaded") 
+      225 -    rows.append((m["slug"], m["name"][:34], str(m["context_win
+          -dow"]), size, " ".join(flags)))                               
+      226 -hdr = ("SLUG","NAME","CTX","SIZE","FLAGS")                    
+      227 -w = [max(len(r[i]) for r in [hdr]+rows) for i in range(5)]    
+      228 -def fmt(r): return "  ".join(r[i].ljust(w[i]) for i in range(5
+          -))                                                            
+      229 -print(fmt(hdr)); print(fmt(tuple("-"*w[i] for i in range(5))))
+      230 -for r in rows: print(fmt(r))                                  
+      231 -print(f"\n{len(rows)} model(s). Use: codex --profile <slug>   
+          -|   warm: mlx-model use <slug>")                              
+      232 -PY                                                            
+      233 -}                                                             
+      234 -                                                              
+      235 -# ---- service + endpoint status ----                         
+      236 -cmd_status() {                                                
+      237 -  echo "Registry: $REGISTRY"                                  
+      238 -  echo "Default (boot) model: $("$PY" -c "import json;print(js
+          -on.load(open('$REGISTRY')).get('default_model'))")"           
+      239 -  printf "MLX     %s/health    -> " "$MLX_BASE";  curl -fsS "$
+          -MLX_BASE/health" 2>/dev/null && echo || echo "DOWN"           
+      240 -  printf "LiteLLM %s/v1/models -> " "$LITELLM_BASE"           
+      241 -  curl -fsS "$LITELLM_BASE/v1/models" >/dev/null 2>&1 && echo 
+          -"ok" || echo "DOWN"                                           
+      242 -  for lbl in "$MLX_LABEL" "$LITELLM_LABEL"; do                
+      243 -    local st; st="$(launchctl print "gui/$(id -u)/$lbl" 2>/dev
+          -/null | awk '/state = /{print $3; exit}')"                    
+      244 -    echo "service $lbl: ${st:-not-bootstrapped}"              
+      245 -  done                                                        
+      246 -}                                                             
+      247 -                                                              
+      248 -# ---- warm/preload a model into MLX now (direct, long timeout
+          -) ----                                                        
+      219 +# ---- load a model into LM Studio now (with context + specula
+          +tive decoding) ----                                           
+      220  cmd_use() {
+      250 -  local slug="${1:-}"; [ -n "$slug" ] || die "usage: mlx-model
+          - use <slug>"                                                  
+      251 -  local mpath; mpath="$(reg_get "$slug" path)"; [ -n "$mpath" 
+          -] || die "no such slug: $slug"                                
+      252 -  echo "warming $slug — loading into MLX (can take a while for
+          - large models)..."                                            
+      253 -  local body resp code bodytext                               
+      254 -  body="$(MP="$mpath" "$PY" -c "import json,os;print(json.dump
+          -s({'model':os.environ['MP'],'messages':[{'role':'user','conten
+          -t':'hi'}],'max_tokens':1}))")"                                
+      255 -  resp="$(curl -sS --max-time 900 -w $'\n%{http_code}' "$MLX_B
+          -ASE/v1/chat/completions" \                                    
+      256 -            -H 'Content-Type: application/json' -d "$body" 2>&
+          -1)" || true                                                   
+      257 -  code="$(printf '%s' "$resp" | tail -1)"; bodytext="$(printf 
+          -'%s' "$resp" | sed '$d')"                                     
+      258 -  if [ "$code" = "200" ]; then                                
+      259 -    echo "ready: $slug is now resident in MLX."               
+      221 +  local id="${1:-}"; [ -n "$id" ] || die "usage: mlx-model use
+          + <id>"                                                        
+      222 +  local ctx spec; ctx="$(reg_get "$id" contextWindow)"; spec="
+          +$(reg_get "$id" spec)"                                        
+      223 +  [ -n "$ctx" ] || die "no such id in registry: $id"          
+      224 +  "$LMS" server start >/dev/null 2>&1 || true                 
+      225 +  # build speculative-decoding flags from the model's "spec" o
+          +bject                                                         
+      226 +  local -a specflags=()                                       
+      227 +  if [ -n "$spec" ] && [ "$spec" != "" ]; then                
+      228 +    if "$PY" -c "import json,sys;sys.exit(0 if json.loads('''$
+          +spec''').get('mtp') else 1)" 2>/dev/null; then                
+      229 +      specflags+=(--speculative-draft-mtp)                    
+      230 +    fi                                                        
+      231 +    local draft; draft="$("$PY" -c "import json;print(json.loa
+          +ds('''$spec''').get('draftModel') or '')" 2>/dev/null || true)
+          +"                                                             
+      232 +    if [ -n "$draft" ]; then                                  
+      233 +      specflags+=(--speculative-draft-simple --speculative-dra
+          +ft-model "$draft")                                            
+      234 +    fi                                                        
+      235 +  fi                                                          
+      236 +  echo "loading $id  (ctx $ctx${specflags+, ${specflags[*]}}).
+          +.."                                                           
+      237 +  if "$LMS" load "$id" -c "$ctx" --identifier "$id" -y "${spec
+          +flags[@]}"; then                                              
+      238 +    echo "ready: $id is loaded in LM Studio."                 
+      239    else
+      261 -    echo "failed to warm $slug (HTTP ${code:-?}):" >&2        
+      262 -    printf '%s\n' "$bodytext" | head -c 600 >&2; echo >&2     
+      263 -    die "model could not be loaded — see $MLX_LOG"            
+      240 +    echo "load failed. If it's a speculative-decoding error, c
+          +lear the model's \"spec\" in $REGISTRY and retry." >&2        
+      241 +    die "could not load $id"                                  
+      242    fi
+      243  }
+      244  
+      267 -# ---- set the boot/default model (rewrite MLX plist --model, 
+          -reload) ----                                                  
+      245 +# ---- set the default model in the pi agent ----             
+      246  cmd_default() {
+      269 -  local slug="${1:-}"; [ -n "$slug" ] || die "usage: mlx-model
+          - default <slug>"                                              
+      270 -  local mpath; mpath="$(reg_get "$slug" path)"; [ -n "$mpath" 
+          -] || die "no such slug: $slug"                                
+      271 -  MLX_PLIST="$MLX_PLIST" NEWPATH="$mpath" "$PY" - <<'PY'      
+      272 -import os, plistlib                                           
+      273 -p = os.environ["MLX_PLIST"]                                   
+      274 -with open(p, "rb") as f: pl = plistlib.load(f)                
+      275 -a = pl["ProgramArguments"]; a[a.index("--model")+1] = os.envir
+          -on["NEWPATH"]                                                 
+      276 -with open(p, "wb") as f: plistlib.dump(pl, f)                 
+      277 -print(f"set MLX boot --model -> {os.environ['NEWPATH']}")     
+      247 +  local id="${1:-}"; [ -n "$id" ] || die "usage: mlx-model def
+          +ault <id>"                                                    
+      248 +  local ctx; ctx="$(reg_get "$id" contextWindow)"; [ -n "$ctx"
+          + ] || die "no such id in registry: $id"                       
+      249 +  REGISTRY="$REGISTRY" PI_SETTINGS="$PI_SETTINGS" MID="$id" "$
+          +PY" - <<'PY'                                                  
+      250 +import json, os, pathlib                                      
+      251 +reg_path = os.environ["REGISTRY"]; mid = os.environ["MID"]    
+      252 +reg = json.load(open(reg_path)); reg["default_model"] = mid   
+      253 +json.dump(reg, open(reg_path, "w"), indent=2); open(reg_path, 
+          +"a").write("\n")                                              
+      254 +sp = pathlib.Path(os.environ["PI_SETTINGS"])                  
+      255 +if sp.exists():                                               
+      256 +    st = json.loads(sp.read_text())                           
+      257 +    st["defaultProvider"] = "lmstudio"; st["defaultModel"] = m
+          +id                                                            
+      258 +    sp.write_text(json.dumps(st, indent=2) + "\n")            
+      259 +print(f"default model -> {mid} (pi defaultProvider=lmstudio)")
+      260  PY
+      279 -  REGISTRY="$REGISTRY" MSLUG="$slug" "$PY" -c "               
+      280 -import json,os                                                
+      281 -reg=json.load(open(os.environ['REGISTRY'])); reg['default_mode
+          -l']=os.environ['MSLUG']                                       
+      282 -json.dump(reg,open(os.environ['REGISTRY'],'w'),indent=2); open
+          -(os.environ['REGISTRY'],'a').write('\n')"                     
+      283 -  launchctl kickstart -k "gui/$(id -u)/$MLX_LABEL" >/dev/null 
+          -2>&1 && echo "reloaded MLX service ($MLX_LABEL)"              
+      261  }
+      262  
+      286 -# ---- discover MLX-servable model dirs not yet registered ---
+          --                                                             
+      287 -cmd_scan() {                                                  
+      288 -  local add_all=""; [ "${1:-}" = "--add-all" ] && add_all=1   
+      289 -  local found                                                 
+      290 -  found="$(REGISTRY="$REGISTRY" "$PY" - <<'PY'                
+      291 -import json, os, glob                                         
+      292 -reg = json.load(open(os.environ["REGISTRY"]))                 
+      293 -known = {m["path"] for m in reg.get("models", [])}            
+      294 -roots = [os.path.expanduser("~/.lmstudio/models"), os.path.exp
+          -anduser("~/.cache/huggingface/hub")]                          
+      295 -hits = []                                                     
+      296 -for root in roots:                                            
+      297 -    for cfg in glob.glob(os.path.join(root, "**", "config.json
+          -"), recursive=True):                                          
+      298 -        d = os.path.dirname(cfg)                              
+      299 -        if glob.glob(os.path.join(d, "*.safetensors")) and d n
+          -ot in known:                                                  
+      300 -            hits.append(d)                                    
+      301 -for h in sorted(set(hits)): print(h)                          
+      302 -PY                                                            
+      303 -)"                                                            
+      304 -  if [ -z "$found" ]; then echo "scan: no unregistered MLX-ser
+          -vable models found."; return; fi                              
+      305 -  echo "Unregistered MLX-servable models:"; echo "$found" | se
+          -d 's/^/  /'                                                   
+      306 -  if [ -n "$add_all" ]; then                                  
+      307 -    echo; while IFS= read -r d; do [ -n "$d" ] && cmd_add "$d"
+          -; done <<< "$found"                                           
+      308 -  else                                                        
+      309 -    echo; echo "Add one with: mlx-model add <path>   (or re-ru
+          -n: mlx-model scan --add-all)"                                 
+      310 -  fi                                                          
+      311 -}                                                             
+      312 -                                                              
+      263  usage() {
+      264    cat <<EOF
+      315 -mlx-model — manage local MLX-LM models for Codex              
+      265 +mlx-model — manage local LM Studio models for the pi agent    
+      266  
+      317 -  mlx-model list                      list registered models (
+          -+ default/loaded)                                             
+      318 -  mlx-model status                    service + endpoint healt
+          -h                                                             
+      319 -  mlx-model scan [--add-all]          find downloaded MLX mode
+          -ls not yet registered                                         
+      320 -  mlx-model add <dir> [--slug s] [--name "..."] [--context N] 
+      321 -                                      register a model (+ Code
+          -x profile/catalog/route)                                      
+      322 -  mlx-model remove <slug>             unregister a model and d
+          -elete its profile                                             
+      323 -  mlx-model use <slug>                warm/preload a model int
+          -o the running MLX server                                      
+      324 -  mlx-model default <slug>            set the boot model (MLX 
+          -loads it at startup)                                          
+      325 -  mlx-model sync                      regenerate all config fr
+          -om models.json + reload                                       
+      267 +  mlx-model list                      list registered models (
+          ++ on-disk/loaded/default)                                     
+      268 +  mlx-model status                    LM Studio server + endpo
+          +int health, pi default                                        
+      269 +  mlx-model scan [--add-all]          find LM Studio LLMs not 
+          +yet registered                                                
+      270 +  mlx-model add <lms-key> [--name "..."] [--context N]        
+      271 +                                      register an LM Studio mo
+          +del + sync pi config                                          
+      272 +  mlx-model remove <id>               unregister a model + syn
+          +c pi config                                                   
+      273 +  mlx-model use <id>                  load a model into LM Stu
+          +dio now (ctx + spec decoding)                                 
+      274 +  mlx-model default <id>              set the pi agent's defau
+          +lt model                                                      
+      275 +  mlx-model sync                      regenerate pi's lmstudio
+          + provider from models.json                                    
+      276  
+      327 -Use a model in Codex:   codex --profile <slug>                
+      277 +Model ids are LM Studio keys (see: mlx-model scan).  Use a mod
+          +el in pi by selecting                                         
+      278 +the lmstudio provider + model, or set the default with: mlx-mo
+          +del default <id>                                              
+      279  EOF
+      280  }
+      281  
+      282  case "${1:-}" in
+      332 -  list)      shift; cmd_list "$@";;                           
+      333 -  status)    shift; cmd_status "$@";;                         
+      334 -  scan)      shift; cmd_scan "$@";;                           
+      335 -  add)       shift; cmd_add "$@";;                            
+      336 -  remove|rm) shift; cmd_remove "$@";;                         
+      337 -  use|warm)  shift; cmd_use "$@";;                            
+      338 -  default)   shift; cmd_default "$@";;                        
+      339 -  sync)      shift; cmd_sync "$@";;                           
+      283 +  list)        shift; cmd_list "$@";;                         
+      284 +  status)      shift; cmd_status "$@";;                       
+      285 +  scan)        shift; cmd_scan "$@";;                         
+      286 +  add)         shift; cmd_add "$@";;                          
+      287 +  remove|rm)   shift; cmd_remove "$@";;                       
+      288 +  use|load|warm) shift; cmd_use "$@";;                        
+      289 +  default)     shift; cmd_default "$@";;                      
+      290 +  sync)        shift; cmd_sync "$@";;                         
+      291    ""|-h|--help|help) usage;;
+      292    *) die "unknown command: $1 (try: mlx-model help)";;
+      293  esac
+
+⏺ Let me fix a bash 3.2 / set -u empty-array hazard in cmd_use (macOS may run
+  stock bash where "${arr[@]}" on an empty array errors).
+
+⏺ Update(~/mlx-local-llm/bin/mlx-model)
+  ⎿  Added 3 lines, removed 2 lines
+      233        specflags+=(--speculative-draft-simple --speculative-dra
+           ft-model "$draft")
+      234      fi
+      235    fi
+      236 -  echo "loading $id  (ctx $ctx${specflags+, ${specflags[*]}}).
+          -.."                                                           
+      237 -  if "$LMS" load "$id" -c "$ctx" --identifier "$id" -y "${spec
+          -flags[@]}"; then                                              
+      236 +  local specdesc=""; [ "${#specflags[@]}" -gt 0 ] && specdesc=
+          +" + ${specflags[*]}"                                          
+      237 +  echo "loading $id  (ctx $ctx$specdesc)..."                  
+      238 +  if "$LMS" load "$id" -c "$ctx" --identifier "$id" -y "${spec
+          +flags[@]+"${specflags[@]}"}"; then                            
+      239      echo "ready: $id is loaded in LM Studio."
+      240    else
+      241      echo "load failed. If it's a speculative-decoding error, c
+           lear the model's \"spec\" in $REGISTRY and retry." >&2
+
+⏺ Let me syntax-check the script and confirm which bash runs it.
+
+⏺ Bash(echo "bash: $(/usr/bin/env bash --version | head -1)"
+      /usr/bin/env bash -n /Users/brown/mlx-local-llm/bin/mlx-model && echo
+      "syntax OK"…)
+  ⎿  bash: GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)
+     syntax OK
+     --- symlink ---
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash 3.2 confirmed — my empty-array handling is correct, and syntax checks
+  out. Task 2 done. Now task 3: back up pi config, then run sync (rebuilds the
+  lmstudio provider, drops gemma + the dead mlx-local provider) and set the
+  default.
+⏺ Bash(cp -p ~/.pi/agent/models.json ~/.pi/agent/models.json.bak.$(date
+      +%Y%m%d-%H%M%S)
+      echo "backup created:"; ls -1 ~/.pi/agent/models.json.bak.* | tail -2…)
+  ⎿  backup created:
+     /Users/brown/.pi/agent/models.json.bak.20260516-195953
+     /Users/brown/.pi/agent/models.json.bak.20260622-125711
+     … +4 lines (ctrl+o to expand)
+
+⏺ Sync worked — pi now has a single lmstudio provider with the two Qwen VL
+  models (vision input: ["text","image"]), the dead mlx-local provider is gone,
+  and the LM Studio server started. Now set the default model.
+
+⏺ Bash(~/.local/bin/mlx-model default qwen/qwen3.6-27b
+      echo "=== pi settings.json now ==="…)
+  ⎿  default model -> qwen/qwen3.6-27b (pi defaultProvider=lmstudio)
+     === pi settings.json now ===
+     defaultProvider: lmstudio
+     defaultModel: qwen/qwen3.6-27b
+
+⏺ Task 3 done. Now task 4: decommission the Codex stack.
+
+⏺ Let me inventory what exists before removing.
+
+⏺ Bash(echo "=== launchd agents ==="; ls -1 ~/Library/LaunchAgents/ | grep -E
+      'litellm|qwen9b|mlx' || echo "(none matched)"
+      echo "=== ~/.codex generated mlx profiles =…)
+  ⎿  === launchd agents ===
+     com.brown.litellm-mlx.plist
+     com.brown.mlx-qwen9b.plist
+     … +15 lines (ctrl+o to expand)
+
+⏺ I see two extra Codex files I did not generate — lmstudio-qwen35.config.toml
+  and model-catalogs/lmstudio-gemma.json. Those are a separate Codex↔LM Studio
+  setup (not from our mlx-local wrapper), so I'll leave them untouched and flag
+  them rather than delete something I didn't create. I'll remove only our
+  generated mlx-* profiles + mlx-local.json, plus the LiteLLM/mlx_lm launchd
+  agents.
+
+⏺ Bash(set -e
+      UID_NUM=$(id -u)…)
+  ⎿  === bootout + delete launchd agents ===
+     booted out com.brown.litellm-mlx
+     deleted com.brown.litellm-mlx.plist
+     … +10 lines (ctrl+o to expand)
+
+⏺ Let me confirm the services are actually down.
+
+⏺ Bash(echo "=== ports (should be down now) ==="
+      for port in 4000 18080; do…)
+  ⎿  === ports (should be down now) ===
+     4000:  down ✓
+     18080: down ✓
+     … +10 lines (ctrl+o to expand)
+
+⏺ Codex stack fully down (:4000 and :18080 dead, no agents listed). The
+  remaining ~/.codex/lmstudio-* profiles are your separate Codex↔LM Studio setup
+  — left intact. Task 4 done. Now task 5: README + fish completions.
+
+⏺ Write(~/mlx-local-llm/README.md)
+  ⎿  Added 49 lines, removed 43 lines
+       1  # mlx-local-llm
+       2  
+       3 -Management for the local MLX-LM models served to Codex.        
+       3 +Management for the local **LM Studio** models served to the **p
+         +i agent**.                                                     
+       4  
+       5  ## Architecture
+       6  
+       7  ```
+       8 -codex --profile <slug>                                         
+       9 -   └─ Responses API ─▶ LiteLLM (127.0.0.1:4000)                
+      10 -                          └─ Chat Completions ─▶ mlx_lm.server 
+         -(127.0.0.1:18080)                                              
+      11 -                                                    └─ one resi
+         -dent model (hot-swapped on demand)                             
+       8 +pi agent ──openai-completions──▶ LM Studio server (127.0.0.1:12
+         +34/v1)                                                         
+       9 +   ▲  ~/.pi/agent/models.json        │ loads a model via `lms l
+         +oad` (vision + speculative decoding)                           
+      10 +   │  (lmstudio provider)            ▼                         
+      11 +mlx-model CLI ── sync ──▶ pi config   ~/.lmstudio/models/...   
+      12 +              └─ use/status ─▶ `lms` CLI + :1234               
+      13  ```
+      14  
+      14 -LiteLLM (installed because this Codex build only speaks the Res
+         -ponses API) exposes every registered                           
+      15 -model by its `slug` and bridges Responses→Chat for `mlx_lm.serv
+         -er`. When Codex requests a slug,                               
+      16 -LiteLLM forwards that model's **path** to MLX. MLX holds one mo
+         -del in memory; if the requested path                           
+      17 -differs from the resident one it **evicts and lazy-loads** the 
+         -new model — no restart. So switching                           
+      18 -models is just picking a different Codex profile.              
+      15 +The pi agent speaks the OpenAI **Chat Completions** API (`api: 
+         +"openai-completions"`) directly to                             
+      16 +LM Studio's server on `:1234`, so there is **no bridge/proxy** 
+         +in the path. `mlx-model` is the                                
+      17 +management wrapper: it keeps a registry (`models.json`), regene
+         +rates pi's `lmstudio` provider from it,                        
+      18 +and drives LM Studio through the `lms` CLI (start the server, l
+         +oad a model with a context length and                          
+      19 +speculative decoding).                                         
+      20  
+      21 +LM Studio is the backend because every registered Qwen model he
+         +re is **vision-language**                                      
+      22 +(`Qwen3_5ForConditionalGeneration`); LM Studio serves images an
+         +d supports speculative decoding                                
+      23 +(`--speculative-draft-mtp` / draft model), which a text-only `m
+         +lx_lm.server` cannot.                                          
+      24 +                                                               
+      25 +> Earlier this directory served **Codex** via `mlx_lm.server` (
+         +:18080) → LiteLLM (:4000). That stack                          
+      26 +> was decommissioned — pi needs neither, since it talks Chat di
+         +rectly to LM Studio.                                           
+      27 +                                                               
+      28  ## Files
+      29  
+      30  | Path | Role |
+      31  |---|---|
+      32  | `~/mlx-local-llm/models.json` | **Source of truth.** Edit onl
+          y via `mlx-model`. |
+      25 -| `~/mlx-local-llm/litellm.config.yaml` | Generated. LiteLLM se
+         -rves every registered model. |                                 
+      33  | `~/mlx-local-llm/bin/mlx-model` | The CLI (symlinked to `~/.l
+          ocal/bin/mlx-model`). |
+      27 -| `~/.codex/model-catalogs/mlx-local.json` | Generated. One Cod
+         -ex catalog entry per model. |                                  
+      28 -| `~/.codex/<slug>.config.toml` | Generated. One Codex profile 
+         -per model. |                                                   
+      29 -| `~/.config/fish/completions/mlx-model.fish` | Fish tab-comple
+         -tions (subcommands + live slugs). |                            
+      34 +| `~/.pi/agent/models.json` | Generated `lmstudio` provider (on
+         +e entry per registered model). |                               
+      35 +| `~/.pi/agent/settings.json` | `defaultProvider`/`defaultModel
+         +` set by `mlx-model default`. |                                
+      36 +| `~/.config/fish/completions/mlx-model.fish` | Fish tab-comple
+         +tions (subcommands + live model ids). |                        
+      37  
+      31 -Services (launchd, persistent): `com.brown.mlx-qwen9b` (mlx_lm 
+         -:18080), `com.brown.litellm-mlx` (LiteLLM :4000).              
+      32 -Logs: `~/Library/Logs/mlx-qwen9b.log`, `~/Library/Logs/litellm-
+         -mlx.log`.                                                      
+      38 +Model ids are **LM Studio keys** (what `lms ls` / `GET :1234/v1
+         +/models` report), e.g.                                         
+      39 +`qwen/qwen3.6-27b`. They must match exactly or pi can't reach t
+         +he model.                                                      
+      40  
+      41  ## Usage
+      42  
+      43  ```bash
+      37 -mlx-model list                 # registered models (+ default/l
+         -oaded)                                                         
+      38 -mlx-model status               # service & endpoint health     
+      39 -mlx-model use <slug>           # preload a model into MLX now (
+         -do this before Codex for big models)                           
+      40 -codex --profile <slug>         # use a model in Codex          
+      44 +mlx-model list                 # registered models (+ on-disk /
+         + loaded / default)                                             
+      45 +mlx-model status               # LM Studio server + endpoint he
+         +alth, pi default                                               
+      46 +mlx-model use <id>             # load a model into LM Studio no
+         +w (context + spec decoding)                                    
+      47 +mlx-model default <id>         # set the pi agent's default mod
+         +el                                                             
+      48 +mlx-model sync                 # regenerate pi's lmstudio provi
+         +der from models.json                                           
+      49  
+      42 -mlx-model scan --add-all       # register every downloaded MLX 
+         -model not yet listed                                           
+      43 -mlx-model add <model-dir>      # register one model (auto: slug
+         -, context, stop token)                                         
+      44 -mlx-model remove <slug>        # unregister + delete its Codex 
+         -profile                                                        
+      45 -mlx-model default <slug>       # set which model MLX loads at b
+         -oot                                                            
+      46 -mlx-model sync                 # regenerate all config from mod
+         -els.json + reload LiteLLM                                      
+      50 +mlx-model scan [--add-all]     # list LM Studio LLMs not yet re
+         +gistered                                                       
+      51 +mlx-model add <lms-key> [--name "..."] [--context N]   # regist
+         +er a model + sync                                              
+      52 +mlx-model remove <id>          # unregister a model + sync     
+      53  ```
+      54  
+      49 -Tab-completion (fish): typing `mlx-model ` + Tab lists subcomma
+         -nds; `mlx-model use ` + Tab completes                          
+      50 -registered slugs. It's auto-loaded — open a new shell, or run `
+         -exec fish` once, to pick it up.                                
+      55 +In pi, select the `lmstudio` provider and a model, or just rely
+         + on the default. Tab-completion (fish)                         
+      56 +is auto-loaded — open a new shell or run `exec fish` once to pi
+         +ck it up.                                                      
+      57  
+      58  ## Registered models
+      59  
+      54 -All are Qwen MLX text models on the single `mlx_lm` backend (fu
+         -ll tool support in Codex):                                     
+      55 -`mlx-qwen9b` (default), `mlx-qwen27b`, `mlx-qwen35b-moe`.      
+      60 +Both are Qwen vision-language models (text **and** image input)
+         +, served by LM Studio:                                         
+      61  
+      62 +| id | ctx | notes |                                           
+      63 +|---|---|---|                                                  
+      64 +| `qwen/qwen3.6-27b` (default) | 32768 | lmstudio-community `Qw
+         +en3.6-27B-MLX-4bit` |                                          
+      65 +| `qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-mlx` | 65536 |
+         + the 9B coder |                                                
+      66 +                                                               
+      67  ### Notes
+      68  
+      59 -- **Large models (27B/35B):** the first request after a switch 
+         -must load 15–20 GB, which can exceed                           
+      60 -  Codex's request timeout. Run `mlx-model use <slug>` first to 
+         -warm it, then launch Codex.                                    
+      61 -- **Context window** defaults to a memory-safe cap of 65536 eve
+         -n when a model advertises more                                 
+      62 -  (`max_context` records the detected max). Override per model 
+         -with `mlx-model add ... --context N`.                          
+      63 -- **Stop token** is auto-set to the model's tokenizer `eos_toke
+         -n`. `add` warns if a model's                                   
+      64 -  `config.json` `eos_token_id` doesn't include that token (the 
+         -leak case fixed for Qwen `<|im_end|>`).                        
+      65 -- Only one model is resident at a time; switching pays a one-ti
+         -me load cost.                                                  
+      66 -                                                               
+      67 -### Compatibility                                              
+      68 -                                                               
+      69 -`mlx_lm.server` is **text-only**. It cannot load Gemma 4 (`gemm
+         -a4_unified`) models — those use a                              
+      70 -unified multimodal architecture that needs a separate `mlx-vlm`
+         - runtime, and as plain chat models                             
+      71 -(no agentic tool-calling) they aren't useful here. Gemma-4 supp
+         -ort was intentionally removed; only                            
+      72 -Qwen MLX text models are served. `mlx-model scan` will still li
+         -st any unregistered model dirs on disk.                        
+      69 +- **Vision:** each entry has `input: ["text","image"]`, so pi c
+         +an pass screenshots/diagrams.                                  
+      70 +- **Speculative decoding:** each model's `spec` object controls
+         + load-time speculation. `{"mtp": true}`                        
+      71 +  adds `--speculative-draft-mtp` (used when the model supports 
+         +MTP). To use a separate draft model,                           
+      72 +  set `"spec": {"draftModel": "<lms-key>"}` (download one first
+         + with `lms get`); `use` then passes                            
+      73 +  `--speculative-draft-simple --speculative-draft-model <key>`.
+         + If a load fails on a spec flag, clear                         
+      74 +  the model's `spec` and retry.                                
+      75 +- **Context window** must mirror what you load in LM Studio so 
+         +pi auto-compacts before LM Studio                              
+      76 +  truncates. Change it with `mlx-model add ... --context N` (or
+         + edit `models.json` + `sync`).                                 
+      77 +- LM Studio can hold more than one model resident; `mlx-model u
+         +se` loads (it does not evict). Free                            
+      78 +  memory with `lms unload <id>` when needed.                   
+
+⏺ Now update the fish completions to read ids from the new schema and match the
+  new subcommands.
+
+⏺ Write(~/.config/fish/completions/mlx-model.fish)
+  ⎿  Added 15 lines, removed 19 lines
+       2  # Auto-loaded by fish from ~/.config/fish/completions/.
+       3  
+       4  # --- helpers ---
+       5 -function __mlx_model_slugs                                     
+       5 +function __mlx_model_ids                                       
+       6      set -l reg "$HOME/mlx-local-llm/models.json"
+       7      test -f "$reg"; or return
+       8 -    python3 -c "import json;print('\n'.join(m['slug'] for m in 
+         -json.load(open('$reg'))['models']))" 2>/dev/null               
+       8 +    python3 -c "import json;print('\n'.join(m['id'] for m in js
+         +on.load(open('$reg'))['models']))" 2>/dev/null                 
+       9  end
+      10  
+      11  function __mlx_model_needs_command
+      12 -    # true when no subcommand has been typed yet               
+      12      set -l cmd (commandline -opc)
+      13      test (count $cmd) -le 1
+      14  end
+      15  
+      16  function __mlx_model_using
+      18 -    # true when the first subcommand equals $argv[1]           
+      17      set -l cmd (commandline -opc)
+      18      test (count $cmd) -ge 2; and contains -- $cmd[2] $argv
+      19  end
+      20  
+      21  # --- subcommands (only when none chosen yet) ---
+      22  complete -c mlx-model -f
+      25 -complete -c mlx-model -n __mlx_model_needs_command -a list    -
+         -d "List registered models (+ default/loaded)"                  
+      26 -complete -c mlx-model -n __mlx_model_needs_command -a status  -
+         -d "Service + endpoint health"                                  
+      27 -complete -c mlx-model -n __mlx_model_needs_command -a scan    -
+         -d "Find downloaded MLX models not registered"                  
+      28 -complete -c mlx-model -n __mlx_model_needs_command -a add     -
+         -d "Register a model (+ Codex profile/route)"                   
+      29 -complete -c mlx-model -n __mlx_model_needs_command -a remove  -
+         -d "Unregister a model and delete its profile"                  
+      30 -complete -c mlx-model -n __mlx_model_needs_command -a use     -
+         -d "Warm/preload a model into the MLX server"                   
+      31 -complete -c mlx-model -n __mlx_model_needs_command -a default -
+         -d "Set the boot model MLX loads at startup"                    
+      32 -complete -c mlx-model -n __mlx_model_needs_command -a sync    -
+         -d "Regenerate all config + reload LiteLLM"                     
+      23 +complete -c mlx-model -n __mlx_model_needs_command -a list    -
+         +d "List registered models (+ on-disk/loaded/default)"          
+      24 +complete -c mlx-model -n __mlx_model_needs_command -a status  -
+         +d "LM Studio server + endpoint health"                         
+      25 +complete -c mlx-model -n __mlx_model_needs_command -a scan    -
+         +d "Find LM Studio LLMs not yet registered"                     
+      26 +complete -c mlx-model -n __mlx_model_needs_command -a add     -
+         +d "Register an LM Studio model + sync pi config"               
+      27 +complete -c mlx-model -n __mlx_model_needs_command -a remove  -
+         +d "Unregister a model + sync pi config"                        
+      28 +complete -c mlx-model -n __mlx_model_needs_command -a use     -
+         +d "Load a model into LM Studio now"                            
+      29 +complete -c mlx-model -n __mlx_model_needs_command -a default -
+         +d "Set the pi agent's default model"                           
+      30 +complete -c mlx-model -n __mlx_model_needs_command -a sync    -
+         +d "Regenerate pi's lmstudio provider"                          
+      31  complete -c mlx-model -n __mlx_model_needs_command -a help    -
+          d "Show usage"
+      32  
+      35 -# --- slug completion for commands that take a slug ---        
+      36 -complete -c mlx-model -n "__mlx_model_using remove use warm def
+         -ault" -f -a "(__mlx_model_slugs)" -d model                     
+      33 +# --- model-id completion for commands that take a registered i
+         +d ---                                                          
+      34 +complete -c mlx-model -n "__mlx_model_using remove use load war
+         +m default" -f -a "(__mlx_model_ids)" -d model                  
+      35  
+      38 -# --- add: directory arg + flags ---                           
+      39 -complete -c mlx-model -n "__mlx_model_using add" -a "(__fish_co
+         -mplete_directories)"                                           
+      40 -complete -c mlx-model -n "__mlx_model_using add" -l slug    -d 
+         -"Override the model slug"  -r                                  
+      41 -complete -c mlx-model -n "__mlx_model_using add" -l name    -d 
+         -"Display name"            -r                                   
+      42 -complete -c mlx-model -n "__mlx_model_using add" -l context -d 
+         -"Context-window cap"      -r                                   
+      36 +# --- add: flags (the arg is an LM Studio key from `lms ls` / `
+         +mlx-model scan`) ---                                           
+      37 +complete -c mlx-model -n "__mlx_model_using add" -l name    -d 
+         +"Display name"      -r                                         
+      38 +complete -c mlx-model -n "__mlx_model_using add" -l context -d 
+         +"Context-window cap" -r                                        
+      39  
+      40  # --- scan: --add-all ---
+      41  complete -c mlx-model -n "__mlx_model_using scan" -l add-all -d
+           "Register everything found"
+
+⏺ Let me validate the CLI works end-to-end and the completions autoload.
+
+⏺ Bash(echo "=== mlx-model status ==="; ~/.local/bin/mlx-model status
+      echo; echo "=== mlx-model list ==="; ~/.local/bin/mlx-model list…)  ⎿  === mlx-model status ===
+     Registry: /Users/brown/mlx-local-llm/models.json
+     Default model: qwen/qwen3.6-27b
+     … +25 lines (ctrl+o to expand)
+
+⏺ All working — list shows both VL models (text+image) with the 27B as default,
+  status is healthy, and completions autoload including id completion. One
+  cosmetic glitch in status (the lms server status line merged). Let me tidy
+  that.
+
+⏺ Update(~/mlx-local-llm/bin/mlx-model)
+  ⎿  Added 1 line, removed 1 line
+      125  cmd_status() {
+      126    echo "Registry: $REGISTRY"
+      127    echo "Default model: $(default_model)"
+      128 -  printf "LM Studio server: "; "$LMS" server status 2>/dev/nul
+          -l || echo "unknown"                                           
+      128 +  printf "LM Studio server: "; { "$LMS" server status 2>&1 | h
+          +ead -1; } || echo "unknown"                                   
+      129    local burl; burl="$(base_url)"
+      130    printf "Endpoint %s/models -> " "$burl"
+      131    curl -fsS "$burl/models" >/dev/null 2>&1 && echo "ok" || ech
+           o "DOWN"
+
+⏺ Bash(/usr/bin/env bash -n /Users/brown/mlx-local-llm/bin/mlx-model && echo
+      "syntax OK"
+      ~/.local/bin/mlx-model status 2>&1 | head -3)
+  ⎿  syntax OK
+     Registry: /Users/brown/mlx-local-llm/models.json
+     Default model: qwen/qwen3.6-27b
+     LM Studio server: The server is running on port 1234.
+
+⏺ Status line clean now. Task 5 done. Now task 6: the pi-agent-config repo on a
+  branch.
+
+⏺ Bash(cd /Users/brown/projects/pi-agent-config
+      echo "=== current branch + status ==="…)
+  ⎿  === current branch + status ===
+     main
+      M pi-config/extensions/claude-mode/README.md
+     … +7 lines (ctrl+o to expand)
+
+⏺ Note: there were already uncommitted changes on main (your WIP on claude-mode,
+  AGENTS.md, sync-lmstudio-models.py, and pi-config/models.json) — they came
+  along to the new branch chore/mlx-local-lmstudio-pi. I'll only touch the two
+  files in scope. Let me mirror the live pi config into the template and read
+  the current template first.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now mirror the live config into the tracked template.
+
+⏺ Write(pi-config/models.json)
+  ⎿  Added 7 lines, removed 54 lines
+       8          {
+       9            "id": "qwen3.5-9b-tng-pkd-qwopus-coder-fable-polaris-
+          mlx",
+      10            "input": [
+      11 -            "text"                                             
+      11 +            "text",                                            
+      12 +            "image"                                            
+      13            ],
+      14            "contextWindow": 65536,
+      15            "reasoning": true,
+      16 +          "name": "Qwen3.5 9B Coder",                          
+      17            "compat": {
+      18              "thinkingFormat": "qwen"
+      19            }
+      20          },
+      21          {
+      20 -          "id": "gemma-4-12b-it-aeon-abliterated-mlx",         
+      22 +          "id": "qwen/qwen3.6-27b",                            
+      23            "input": [
+      22 -            "text"                                             
+      24 +            "text",                                            
+      25 +            "image"                                            
+      26            ],
+      24 -          "contextWindow": 65536,                              
+      25 -          "reasoning": true,                                   
+      26 -          "compat": {                                          
+      27 -            "thinkingFormat": "qwen-chat-template"             
+      28 -          }                                                    
+      29 -        },                                                     
+      30 -        {                                                      
+      31 -          "id": "gemma-4-12b-it-aeon-abliterated-mlxfp4",      
+      32 -          "input": [                                           
+      33 -            "text"                                             
+      34 -          ],                                                   
+      35 -          "contextWindow": 65536,                              
+      36 -          "reasoning": true,                                   
+      37 -          "compat": {                                          
+      38 -            "thinkingFormat": "qwen-chat-template"             
+      39 -          }                                                    
+      40 -        },                                                     
+      41 -        {                                                      
+      42 -          "id": "google/gemma-4-12b-qat",                      
+      43 -          "input": [                                           
+      44 -            "text"                                             
+      45 -          ],                                                   
+      46 -          "contextWindow": 65536,                              
+      47 -          "reasoning": true,                                   
+      48 -          "compat": {                                          
+      49 -            "thinkingFormat": "qwen-chat-template"             
+      50 -          }                                                    
+      51 -        },                                                     
+      52 -        {                                                      
+      53 -          "id": "google/gemma-4-26b-a4b-qat",                  
+      54 -          "input": [                                           
+      55 -            "text"                                             
+      56 -          ],                                                   
+      57 -          "contextWindow": 65536,                              
+      58 -          "reasoning": true,                                   
+      59 -          "compat": {                                          
+      60 -            "thinkingFormat": "qwen-chat-template"             
+      61 -          }                                                    
+      62 -        }                                                      
+      63 -      ]                                                        
+      64 -    },                                                         
+      65 -    "mlx-local": {                                             
+      66 -      "baseUrl": "http://localhost:8080/v1",                   
+      67 -      "api": "openai-completions",                             
+      68 -      "apiKey": "mlx-local",                                   
+      69 -      "models": [                                              
+      70 -        {                                                      
+      71 -          "id": "/Users/brown/.lmstudio/models/Youssofal/Qwen3.
+         -6-27B-MTPLX-Optimized-Speed",                                  
+      72 -          "input": [                                           
+      73 -            "text"                                             
+      74 -          ],                                                   
+      27            "contextWindow": 32768,
+      28            "reasoning": true,
+      29 +          "name": "Qwen3.6 27B",                               
+      30            "compat": {
+      31              "thinkingFormat": "qwen",
+      32              "supportsDeveloperRole": false
+
+⏺ Now remove the two dead mlx-server scripts (they point at the deleted
+  ~/projects/mac-mlx-env venv and the squatted :8080 — obsolete under the LM
+  Studio architecture). I'll leave your untracked
+  scripts/sync-lmstudio-models.py WIP alone.
+
+⏺ Bash(cd /Users/brown/projects/pi-agent-config
+      git rm scripts/mlx-server.sh pi-config/scripts/mlx-server.fish 2>&1…)
+  ⎿  rm 'pi-config/scripts/mlx-server.fish'
+     rm 'scripts/mlx-server.sh'
+     === branch status ===
+     … +7 lines (ctrl+o to expand)
+
+⏺ Repo branch changes in scope: mirrored pi-config/models.json + removed the two
+  dead scripts (your other WIP changes left untouched, committing left to you).
+  Task 6 done. Now the real end-to-end verification — load the 27B via the CLI
+  (exercises use + MTP speculative decoding) and test vision through LM Studio.
+
+⏺ Bash(echo "=== mlx-model use qwen/qwen3.6-27b (loads 16GB + MTP spec decoding)
+      ==="
+      ~/.local/bin/mlx-model use qwen/qwen3.6-27b…)
+  ⎿  === mlx-model use qwen/qwen3.6-27b (loads 16GB + MTP spec decoding) ==
+     =
+     loading qwen/qwen3.6-27b  (ctx 32768 + --speculative-draft-mtp)...
+     … +117 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ The 27B loaded in 10.4 s with --speculative-draft-mtp accepted (no error → MTP
+  speculative decoding is active for this build), and lms ps confirms it
+  resident at ctx 32768. Now the decisive test: vision through LM Studio's :1234
+  endpoint (pi's exact path). I'll generate a solid-red PNG and ask the model
+  what color it is.
+
+⏺ Bash(python3 - <<'PY'
+      import zlib, struct, base64, json, urllib.request…)
+  ⎿  Error: claude-opus-4-8 is temporarily unavailable, so auto mode cannot 
+     determine the safety of Bash right now. Wait briefly and then try this 
+     action again. If it keeps failing, continue with other tasks that don't 
+     require this action and come back to it later. Note: reading files, 
+     searching code, and other read-only operations do not require the 
+     classifier and can still be used.
+  ⎿  You've hit your monthly spend limit · raise it at claude.ai/settings/usage
+     /upgrade or /usage-credits to finish what you’re working on.
+
+✻ Churned for 21m 19s
+
+❯ /rate-limit-options                                                           
+  ⎿  Increased monthly spend limit to €75
+❯ verify                                                                        
+
+⏺ The classifier is back. Let me re-run the vision test.
+
+⏺ Bash(python3 - <<'PY'
+      import zlib, struct, base64, json, urllib.request, urllib.error…)
+  ⎿  VISION RESPONSE:
+
+⏺ Empty content — likely the reasoning model spent the 50-token budget on its
+  thinking channel. Let me inspect the full response (reasoning field,
+  finish_reason) and give it more tokens.
+
+⏺ Bash(python3 - <<'PY'
+      import zlib, struct, base64, json, urllib.request, urllib.error…)
+  ⎿  finish_reason: stop
+     content: '\n\nRed'
+     reasoning_content: 'The user wants to identify the color of the provid
+     … +6 lines (ctrl+o to expand)
+
+⏺ Vision confirmed working end-to-end. The 27B correctly identified the red
+  image:
+  - content: "Red", finish_reason: stop
+  - reasoning_content: "The image is a solid block of color… a bright, primary 
+  red… Final Answer: Red."
+
+  (The first attempt looked empty only because max_tokens:50 was fully consumed
+  by 79 reasoning tokens — this is a reasoning model, so pi's thinking budget
+  needs headroom; not a vision problem.)
+
+⏺ All seven tasks complete and verified. Here's the final state:
+
+  Done — mlx-local-llm now drives LM Studio for the pi agent
+
+  New architecture (no bridge — pi talks Chat directly to LM Studio):
+  pi agent ──openai-completions──▶ LM Studio :1234  ──▶ qwen/qwen3.6-27b |
+  qwen3.5-9b
+     ▲ ~/.pi/agent/models.json (lmstudio provider)        (vision + MTP
+  speculative decoding)
+     └ mlx-model CLI  ── sync / use / default ──▶ `lms`
+
+  What changed
+  - Registry ~/mlx-local-llm/models.json → LM Studio/pi schema (two Qwen VL
+  models, input:["text","image"], spec.mtp).
+  - CLI mlx-model rewritten: list / status / scan / add / remove / use(load) / 
+  default / sync now drive lms + write pi config (Codex/LiteLLM/mlx_lm.server
+  logic gone).
+  - pi config: lmstudio provider rebuilt with the two models (vision on), dead
+  mlx-local (:8080) provider and all Gemma entries removed; default →
+  qwen/qwen3.6-27b. Backup at ~/.pi/agent/models.json.bak.20260622-125711.
+  - Codex stack decommissioned: LiteLLM (:4000) + mlx_lm.server (:18080) launchd
+  agents booted out & plists deleted; generated mlx-* Codex profiles +
+  mlx-local.json catalog + litellm.config.yaml removed.
+  - Docs/completions rewritten for the new flow.
+  - Repo pi-agent-config (branch chore/mlx-local-lmstudio-pi): mirrored
+  pi-config/models.json, removed the two dead mlx-server scripts. Not committed 
+  — left for you.
+
+  Verified
+  - mlx-model use qwen/qwen3.6-27b → loaded in 10.4 s at ctx 32768,
+  --speculative-draft-mtp accepted (no error).
+  - Vision: red PNG → model answered "Red" through :1234 (pi's path).
+  - Codex services down (:4000/:18080 dead, no agents listed).
+  - mlx-model list/status healthy; fish completions autoload with live ids.
+
+  Two things to note / your call
+  1. ~/.codex/lmstudio-* profiles (lmstudio-qwen35, lmstudio-gemma12/26/coder) +
+  model-catalogs/lmstudio-gemma.json — a separate Codex↔LM Studio setup I
+  didn't create, so I left them. Remove them yourself if you're done with Codex
+  entirely.
+  2. Speculative decoding via a draft model: MTP is on. If you also want
+  draft-model speculation, lms get a small Qwen draft, then set "spec": 
+  {"draftModel": "<lms-key>"} on a model in models.json — use will pass
+  --speculative-draft-simple.
+
+  The pi-agent-config branch is uncommitted (your other WIP — claude-mode,
+  AGENTS.md, sync-lmstudio-models.py — rode along on it). Want me to commit just
+  the two in-scope files (pi-config/models.json + the two script removals) on
+  that branch, or leave it all to you?
+
+✻ Churned for 1m 29s
+
+❯ commit and push to my mlx branch                                              
+
+⏺ Let me check the existing branches to find your "mlx branch."
+
+⏺ Bash(cd /Users/brown/projects/pi-agent-config
+      echo "=== local branches ==="; git branch…)
+  ⎿  === local branches ===
+     * chore/mlx-local-lmstudio-pi
+       main
+     … +8 lines (ctrl+o to expand)
+
+⏺ There are a few mlx-related branches, and a push is hard to undo — let me
+  confirm which one you mean before I push.
+
+⏺ User answered Claude's questions:
+  ⎿  · Which branch should I commit the in-scope changes (pi-config/models.json 
+     + the two mlx-server script removals) to and push? → mlx-lmstudio-working
+
+⏺ On it — I'll create/rename the branch to mlx-lmstudio-working, stage only my
+  three in-scope files, commit, and push.
+
+⏺ Bash(cd /Users/brown/projects/pi-agent-config
+      git branch -m mlx-lmstudio-working…)
+  ⎿  === staged (what will be committed) ===
+      pi-config/models.json             |  39 +++++--
+      pi-config/scripts/mlx-server.fish | 207 -----------------------------
+     … +9 lines (ctrl+o to expand)
+
+⏺ Staged set is exactly my three files; your WIP (claude-mode, AGENTS.md, sync
+  script) is excluded. Committing and pushing.
+
+⏺ Bash(cd /Users/brown/projects/pi-agent-config
+      git commit -F - <<'MSG'…)
+  ⎿  [mlx-lmstudio-working 8f0aa4e] chore(mlx-local): point pi at LM Studio
+     , drop dead mlx_lm.server scripts
+      3 files changed, 27 insertions(+), 454 deletions(-)
+     … +13 lines (ctrl+o to expand)
+
+⏺ Done. Committed and pushed.
+
+  - Branch: mlx-lmstudio-working (new, tracking origin/mlx-lmstudio-working)
+  - Commit: 8f0aa4e — chore(mlx-local): point pi at LM Studio, drop dead 
+  mlx_lm.server scripts
+  - Contents: only the 3 in-scope files — pi-config/models.json (rewritten
+  lmstudio provider) + deletions of scripts/mlx-server.sh and
+  pi-config/scripts/mlx-server.fish. 454 deletions, 27 insertions.
+  - Left untouched on the branch (uncommitted): your WIP — claude-mode
+  README/index.ts, AGENTS.md, scripts/sync-lmstudio-models.py.
+
+  GitHub offered a PR link if you want one:
+  https://github.com/chronicblondiee/pi-agent-config/pull/new/mlx-lmstudio-worki
+  ng
+
+  The live setup (mlx-model → LM Studio :1234 → pi, with the 27B loaded + vision
+  verified) is unaffected by the repo commit.
+
+✻ Crunched for 1m 4s

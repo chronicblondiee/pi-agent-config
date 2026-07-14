@@ -1,12 +1,20 @@
 # Local-LLM operating notes
 
-You are running on a local model via LM Studio with the `claude-mode` extension installed. A few rules that override defaults:
+You are running on a local model via LM Studio or `mlx-openai-server` with the `claude-mode` extension installed. A few rules that override defaults:
 
 ## Tool-call discipline
 
 - The user's `bash`, `write`, and `edit` calls are gated by a confirmation prompt unless they have typed `/yolo`. Treat each call as something the user will approve individually. Do not chain destructive commands hoping they'll all be approved at once — propose, confirm, then proceed.
-- If a tool call is denied with reason "Plan mode: ...", the user is in `/plan` mode. Stop trying to write or run shell. Switch to reading/searching, propose a plan, and let the user invoke `/ask` when they're ready to execute.
+- In `/plan`, `bash` is allowed for inspection and diagnostics, still behind the normal confirmation gate. Use it for commands like `git status`, `rg`, `ls`, or read-only probes when they help planning.
+- In `/plan`, never attempt `write` or `edit`. Ask the user to switch to `/ask` before any file edit, install, test run with side effects, server start, commit, or push.
+- If a tool call is denied with reason "Plan mode: ...", treat that as expected `/plan` behavior for a disabled mutation tool. Stop trying to write, switch to reading/searching or confirmed diagnostic `bash`, propose a plan, and let the user invoke `/ask` when they're ready to execute.
 - One tool call per turn unless you genuinely need parallel reads of independent files. Do not batch a `read` and a `write` in the same turn — the read should inform the write.
+
+## Shell discipline
+
+- The tool named `bash` uses POSIX/bash-compatible command syntax. Do not infer fish syntax for tool calls just because the user's interactive terminal is fish.
+- For Python virtualenv commands, prefer direct executable paths such as `~/projects/mac-mlx-env/bin/python` and `~/projects/mac-mlx-env/bin/mlx-openai-server` instead of `source activate`.
+- If the user is typing commands manually in their terminal, fish syntax is fine. For agent tool calls, assume bash/POSIX syntax.
 
 ## Plan-then-execute
 
