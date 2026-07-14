@@ -2,7 +2,7 @@
  * claude-mode: Claude-Code-style ergonomics for pi.dev.
  *
  * Adds a confirmation gate before bash/write/edit, plus slash commands:
- *   /plan                - read-only mode (read, grep, find, ls only)
+ *   /plan                - planning mode (bash allowed, write/edit blocked)
  *   /yolo                - disable the gate for this session
  *   /ask                 - re-enable the gate (default at startup)
  *   /trust-status        - show current mode and remembered allow-list
@@ -19,7 +19,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 // list wholesale on /plan|/ask|/yolo, so any tool name missing here vanishes
 // after the first mode toggle.
 const ASK_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "question", "todo"];
-const PLAN_TOOLS = ["read", "grep", "find", "ls", "question"];
+// Plan mode keeps bash available for inspection commands such as `git status`,
+// but write/edit stay unavailable and are also blocked defensively below.
+const PLAN_TOOLS = ["read", "bash", "grep", "find", "ls", "question"];
 const GATED = new Set(["bash", "write", "edit"]);
 
 type Mode = "ask" | "plan" | "yolo";
@@ -33,7 +35,7 @@ export default function claudeModeExtension(pi: ExtensionAPI): void {
 		if (mode === "yolo") return;
 		if (!GATED.has(event.toolName)) return;
 
-		if (mode === "plan") {
+		if (mode === "plan" && event.toolName !== "bash") {
 			return {
 				block: true,
 				reason: `Plan mode: ${event.toolName} is disabled. Use /ask to restore full tools.`,
@@ -87,7 +89,7 @@ export default function claudeModeExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("plan", {
-		description: "Read-only mode: no bash/write/edit",
+		description: "Planning mode: bash allowed, no write/edit",
 		handler: async (_args, ctx) => setMode("plan", ctx),
 	});
 

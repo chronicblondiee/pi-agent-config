@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — switched the Mac offline harness to Python 3.12 + `mlx-openai-server`, trimmed `claude-mode` tool restoration, and reduced external packages to `pi-bar`; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-14 — clarified Pi `bash` tool vs fish terminal behavior and kept confirmed `bash` available in `/plan`, switched the Mac offline harness to Python 3.12 + `mlx-openai-server`, trimmed `claude-mode` tool restoration, and reduced external packages to `pi-bar`; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -167,7 +167,19 @@ uv pip install --python ~/projects/mac-mlx-env/bin/python mlx-openai-server hf_t
 
 The same setup is captured in [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh). It defaults to `~/projects/mac-mlx-env` and Python 3.12; override with `MLX_SERVER_VENV` or `MLX_SERVER_PYTHON` for experiments.
 
-If you want an interactive activation instead, use the shell-specific entry point:
+### Shell semantics: Pi tool vs user terminal
+
+Pi's tool is named `bash`. On this Mac, Pi 0.80.3 runs that tool through non-interactive `/bin/bash -c` by default, even when the user's interactive terminal shell is fish. Keep Pi's tool shell on bash/POSIX semantics for portability unless you intentionally want every model-generated shell command to run through fish.
+
+For agent-safe automation, prefer direct venv executables instead of activation:
+
+```bash
+~/projects/mac-mlx-env/bin/python --version
+~/projects/mac-mlx-env/bin/mlx-openai-server --version
+~/projects/mac-mlx-env/bin/mlx-openai-server launch --help
+```
+
+If you want interactive activation in your own terminal, use the shell-specific entry point:
 
 ```bash
 # bash / zsh
@@ -178,6 +190,16 @@ source ~/projects/mac-mlx-env/bin/activate
 # fish
 source ~/projects/mac-mlx-env/bin/activate.fish
 ```
+
+Do not set this in `~/.pi/agent/settings.json` by default:
+
+```json
+{
+  "shellPath": "/opt/homebrew/bin/fish"
+}
+```
+
+That would make Pi's `bash` tool execute commands via `fish -c`. It may make fish snippets work, but most model-generated commands and setup examples assume POSIX/bash behavior, so it is more likely to create failures than fix them.
 
 ### Launch the server
 
@@ -244,7 +266,7 @@ pi --list-models
 pi --provider mlx-local --model mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit -p "Reply with exactly: ok"
 ```
 
-For the offline dry-run, turn Wi-Fi off after the model has loaded once from cache, restart the server, and repeat the `curl` and `pi -p` smoke tests. Then open an interactive pi session, use `/plan`, confirm `bash`/`edit`/`write` are unavailable, switch back with `/ask`, and run a small read-edit-checkpoint loop.
+For the offline dry-run, turn Wi-Fi off after the model has loaded once from cache, restart the server, and repeat the `curl` and `pi -p` smoke tests. Then open an interactive pi session, use `/plan`, confirm diagnostic `bash` is available behind confirmation while `edit`/`write` are unavailable, switch back with `/ask`, and run a small read-edit-checkpoint loop.
 
 ### Model picks for 32 GB unified memory
 
@@ -278,6 +300,8 @@ When real numbers are in hand, replace this table and bump `contextWindow` in `p
 
 - Switch to the Mac provider with `/model` and pick the `mlx-local` entry.
 - `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
+- Use `/plan` for planning and inspection. Confirmed `bash` is available there for diagnostics such as `git status`, `rg`, `ls`, and endpoint probes.
+- Switch to `/ask` before file edits, installs, test runs with side effects, server starts, commits, pushes, or other state-changing commands.
 - Keep `"supportsDeveloperRole": false` inside the `compat` block of each raw `mlx-local` Qwen model unless you have verified the server normalizes `developer` to `system`. Qwen3.6's chat template expects `system`/`user`/`assistant`/`tool`; the flag tells pi to send `system`.
 
 ---
@@ -376,7 +400,7 @@ Drop a tighter system prompt at `~/.pi/agent/SYSTEM.md` (replaces pi's built-in)
 Pi has no built-in permission system or plan mode — both are deliberate non-features. The [`pi-config/extensions/claude-mode/`](./pi-config/extensions/claude-mode/) extension adds them:
 
 - **Gate:** before `bash`, `write`, or `edit` runs, prompts `Yes / No / Always for this session`.
-- **`/plan`** — read-only mode. Active tools restricted to `read, grep, find, ls, question`.
+- **`/plan`** — planning mode. Active tools restricted to `read, bash, grep, find, ls, question`; `bash` still asks for confirmation, `write`/`edit` are unavailable.
 - **`/yolo`** — disable the gate for the rest of the session (asks for one confirmation).
 - **`/ask`** — restore default gated behavior, clears any "always" memory.
 - **`/trust-status`** — print current mode and remembered allow-list.
@@ -394,7 +418,7 @@ Pi auto-discovers `~/.pi/agent/extensions/*/index.ts` — no settings.json entry
 
 ### Additional extensions
 
-For the slim offline harness, keep only the extensions that provide Claude-Code-like essentials without extra network or package assumptions. The repo still contains older optional extensions, but `claude-mode` now restores only `read, bash, edit, write, grep, find, ls, question, todo` on `/ask`; tools such as `fetch`, `ast-grep`, `test`, `remember`, and `forget` intentionally do not reappear after mode toggles.
+For the slim offline harness, keep only the extensions that provide Claude-Code-like essentials without extra network or package assumptions. The repo still contains older optional extensions, but `claude-mode` now restores only `read, bash, edit, write, grep, find, ls, question, todo` on `/ask`; `/plan` keeps `read, bash, grep, find, ls, question`. Tools such as `fetch`, `ast-grep`, `test`, `remember`, and `forget` intentionally do not reappear after mode toggles.
 
 | Extension | What it does | Commands |
 |---|---|---|
@@ -506,9 +530,11 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
+- Clarified the Mac shell split: Pi's `bash` tool is `/bin/bash -c` by default, the user's terminal can still be fish, direct `~/projects/mac-mlx-env/bin/...` executables are preferred for automation, and `shellPath: "/opt/homebrew/bin/fish"` is intentionally not recommended.
+- Kept confirmed `bash` available in `claude-mode` `/plan` for diagnostic shell commands while continuing to block `write` and `edit`.
 - Switched the Mac offline harness from direct `mlx_lm.server` notes to `mlx-openai-server` on `127.0.0.1:8080`, with `uv` + Python 3.12 and `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` as the primary model.
 - Added [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh) for the reproducible `~/projects/mac-mlx-env` setup (`mlx-openai-server` + `hf_transfer`).
-- Slimmed `claude-mode` restoration: `/ask` restores `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `question`, and `todo`; `/plan` keeps only `read`, `grep`, `find`, `ls`, and `question`.
+- Slimmed `claude-mode` restoration: `/ask` restores `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `question`, and `todo`; `/plan` keeps only `read`, `bash`, `grep`, `find`, `ls`, and `question`.
 - Reduced the documented external package set to `npm:pi-bar`; heavier planning/task/subagent packages are now called out as intentionally excluded from the offline harness.
 
 ### 2026-07-06
