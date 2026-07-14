@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — clarified Pi `bash` tool vs fish terminal behavior and kept confirmed `bash` available in `/plan`, switched the Mac offline harness to Python 3.12 + `mlx-openai-server`, trimmed `claude-mode` tool restoration, and reduced external packages to `pi-bar`; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-14 — made the Mac `mlx-local` Qwen3.6 35B A3B OptiQ entry the live default for plain `pi`, clarified Pi `bash` tool vs fish terminal behavior, and kept confirmed `bash` available in `/plan`; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -298,7 +298,8 @@ When real numbers are in hand, replace this table and bump `contextWindow` in `p
 
 ### Pi usage notes
 
-- Switch to the Mac provider with `/model` and pick the `mlx-local` entry.
+- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so start `mlx-openai-server` first.
+- Use `/model` only when you intentionally want to switch away from the Mac `mlx-local` default.
 - `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
 - Use `/plan` for planning and inspection. Confirmed `bash` is available there for diagnostics such as `git status`, `rg`, `ls`, and endpoint probes.
 - Switch to `/ask` before file edits, installs, test runs with side effects, server starts, commits, pushes, or other state-changing commands.
@@ -530,6 +531,7 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
+- Set the live Mac Pi default to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so plain `pi` uses the `mlx-openai-server` Qwen3.6 35B A3B OptiQ harness.
 - Clarified the Mac shell split: Pi's `bash` tool is `/bin/bash -c` by default, the user's terminal can still be fish, direct `~/projects/mac-mlx-env/bin/...` executables are preferred for automation, and `shellPath: "/opt/homebrew/bin/fish"` is intentionally not recommended.
 - Kept confirmed `bash` available in `claude-mode` `/plan` for diagnostic shell commands while continuing to block `write` and `edit`.
 - Switched the Mac offline harness from direct `mlx_lm.server` notes to `mlx-openai-server` on `127.0.0.1:8080`, with `uv` + Python 3.12 and `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` as the primary model.
