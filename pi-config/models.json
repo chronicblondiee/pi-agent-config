@@ -76,7 +76,7 @@
           "input": [
             "text"
           ],
-          "contextWindow": 24576,
+          "contextWindow": 32768,
           "reasoning": true,
           "compat": {
             "thinkingFormat": "qwen",

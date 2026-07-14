@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — made the Mac `mlx-local` Qwen3.6 35B A3B OptiQ entry the live default for plain `pi`, clarified Pi `bash` tool vs fish terminal behavior, and kept confirmed `bash` available in `/plan`; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-14 — raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32k context and added a one-command `pi-mlx-local` launcher; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -212,7 +212,7 @@ Primary offline model:
   --served-model-name mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
   --host 127.0.0.1 \
   --port 8080 \
-  --context-length 24576 \
+  --context-length 32768 \
   --reasoning-parser qwen3_moe \
   --tool-call-parser qwen3_coder \
   --kv-bits 8 \
@@ -227,6 +227,20 @@ curl -s http://localhost:8080/v1/models | jq
 ```
 
 That id is what must appear in `models.json`. `mlx-openai-server` supports `--served-model-name`, so the template uses the stable HF id rather than a per-machine absolute path.
+
+For day-to-day use, prefer the repo wrapper:
+
+```bash
+scripts/pi-mlx-local.sh -p "Reply with exactly: ok"
+```
+
+Install the short command with:
+
+```bash
+ln -sfn ~/projects/pi-agent-config/scripts/pi-mlx-local.sh ~/.local/bin/pi-mlx-local
+```
+
+`pi-mlx-local` reuses an existing server on port 8080 only when `/v1/models` reports `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`. If another process owns the port, it exits with a clear error instead of killing or replacing that process. When it starts the server itself, logs go to `~/.local/state/pi-agent-config/mlx-openai-server.log`, and the server is left running after Pi exits.
 
 ### Local test commands
 
@@ -245,7 +259,7 @@ Run these after the env is created and the model weights are cached:
   --served-model-name mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
   --host 127.0.0.1 \
   --port 8080 \
-  --context-length 24576 \
+  --context-length 32768 \
   --reasoning-parser qwen3_moe \
   --tool-call-parser qwen3_coder \
   --kv-bits 8 \
@@ -292,13 +306,13 @@ For the offline dry-run, turn Wi-Fi off after the model has loaded once from cac
 | Max usable context length | _needs measurement_ | Start at 16384, send increasing-length prompts until throughput collapses |
 | Decode tok/s @ 4096 ctx | _needs measurement_ | `mlx-openai-server` logs request timings; otherwise wall-clock a fixed-length completion |
 | Decode tok/s @ 32768 ctx | _needs measurement_ | same |
-| Pi auto-compaction threshold | follows `contextWindow` in models.json (currently 24576 for the OptiQ A3B entry) | drop if measurement shows OOM/swap, raise only after measurement |
+| Pi auto-compaction threshold | follows `contextWindow` in models.json (currently 32768 for the OptiQ A3B entry) | drop if measurement shows OOM/swap, raise only after measurement |
 
 When real numbers are in hand, replace this table and bump `contextWindow` in `pi-config/models.json` accordingly.
 
 ### Pi usage notes
 
-- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so start `mlx-openai-server` first.
+- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`; use `pi-mlx-local` when you want the wrapper to start or reuse `mlx-openai-server` first.
 - Use `/model` only when you intentionally want to switch away from the Mac `mlx-local` default.
 - `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
 - Use `/plan` for planning and inspection. Confirmed `bash` is available there for diagnostics such as `git status`, `rg`, `ls`, and endpoint probes.
@@ -346,7 +360,7 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
       "api": "openai-completions",
       "apiKey": "mlx-local",
       "models": [
-        { "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit", "input": ["text"], "contextWindow": 24576, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
+        { "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
       ]
     }
   }
@@ -531,6 +545,7 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-14
+- Raised the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness to 32768 context and added [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh), which starts or reuses `mlx-openai-server` before launching Pi.
 - Set the live Mac Pi default to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`, so plain `pi` uses the `mlx-openai-server` Qwen3.6 35B A3B OptiQ harness.
 - Clarified the Mac shell split: Pi's `bash` tool is `/bin/bash -c` by default, the user's terminal can still be fish, direct `~/projects/mac-mlx-env/bin/...` executables are preferred for automation, and `shellPath: "/opt/homebrew/bin/fish"` is intentionally not recommended.
 - Kept confirmed `bash` available in `claude-mode` `/plan` for diagnostic shell commands while continuing to block `write` and `edit`.
