@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-14 — documented current Pi-visible context usage for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-15 — dropped the Mac `mlx-local` Qwen3.6 35B A3B OptiQ context window 32768 → 24576 after an OOM at ~80% context usage; see [Change notes](#change-notes) for full history.
 
 ---
 
@@ -304,12 +304,13 @@ Current checked-in and live Mac Pi config agree on the server-side context windo
 
 | Model | Server context | Pi-visible context | Pi-visible max output | Thinking | Images |
 |---|---:|---:|---:|---|---|
-| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | 32768 | 32.8K | 16.4K | yes | no |
+| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | 24576 | 24.6K | 8.2K | yes | no |
 
 Source of truth:
 
-- [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) starts `mlx-openai-server` with `--context-length 32768`.
-- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `32768`, `reasoning` to `true`, and `input` to `["text"]`.
+- [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) starts `mlx-openai-server` with `--context-length 24576`.
+- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `24576`, `reasoning` to `true`, and `input` to `["text"]`.
+- Pi-visible max output is `contextWindow - compaction.reserveTokens` (default `reserveTokens` 16384, unset in `~/.pi/agent/settings.json`).
 
 ### Pi smoke usage sample
 
@@ -329,7 +330,7 @@ Warm prompt-cache reruns can split the same 5290 prompt tokens across `input` an
 | Max usable context length | _needs measurement_ | Start at 16384, send increasing-length prompts until throughput collapses |
 | Decode tok/s @ 4096 ctx | _needs measurement_ | `mlx-openai-server` logs request timings; otherwise wall-clock a fixed-length completion |
 | Decode tok/s @ 32768 ctx | _needs measurement_ | same |
-| Pi auto-compaction threshold | follows `contextWindow` in models.json (currently 32768 for the OptiQ A3B entry) | drop if measurement shows OOM/swap, raise only after measurement |
+| Pi auto-compaction threshold | follows `contextWindow` in models.json (dropped 32768 → 24576 on 2026-07-15 after an OOM at ~80% context usage at the old value) | 24576 is borrowed from the ROCm host's known-good value for the same model family, not independently measured on this Mac — drop further (e.g. 20480) if OOM recurs, raise only after real measurement |
 
 When real numbers are in hand, replace this table and bump `contextWindow` in `pi-config/models.json` accordingly.
 
@@ -591,6 +592,9 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ---
 
 ## Change notes
+
+### 2026-07-15
+- Dropped the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness context window 32768 → 24576 (`scripts/pi-mlx-local.sh` `CONTEXT_LENGTH`, `pi-config/models.json` and live `~/.pi/agent/models.json` `contextWindow`) after an OOM at ~80% context usage (~26k of 32768 tokens) — well past where the default `compaction.reserveTokens` (16384) should have triggered compaction. 24576 matches the already-validated context length for the same model family on the ROCm host; still flagged as an unmeasured first-pass mitigation for this Mac specifically, not a confirmed safe ceiling. `compaction.reserveTokens`/`keepRecentTokens` were left at defaults — only the context-window lever was tuned this round.
 
 ### 2026-07-14
 - Documented current Pi-visible context stats for the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness: 32768 configured context, 32.8K visible context, 16.4K visible max output, thinking on, text-only input, and a no-session smoke run using 5306 total tokens (~16.2%), including warm prompt-cache accounting.
