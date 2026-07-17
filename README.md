@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-15 — dropped the Mac `mlx-local` Qwen3.6 35B A3B OptiQ context window 32768 → 24576 after an OOM at ~80% context usage; see [Change notes](#change-notes) for full history.
+**Last updated:** 2026-07-18 — ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
 
 ---
 
@@ -131,20 +131,23 @@ Of the four, this one is closest to the VRAM ceiling. Watch for ROCm OOM mid-gen
 
 ---
 
-## Mac alternative — mlx-openai-server on M1 Pro 32 GB
+## Mac alternative — mlx_lm.server on M1 Pro 32 GB
 
 > **CachyOS workstation users — skip this section.** Everything above and below stays unchanged on the 7900 XTX setup. This section only applies when running pi against a Mac.
 
 ### Why this exists
 
-LM Studio's bundled MLX runtime (`~/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac14-arm64@25/`, ships `mlx_vlm 0.4.5`) doesn't yet recognize Qwen3.6's MTP layers. Loading any Qwen3.6 MLX build through LM Studio currently fails with:
+LM Studio's bundled MLX runtime (`~/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac14-arm64@25/`, ships `mlx_vlm 0.4.5`) doesn't yet recognize Qwen3.6's MTP layers, so the Mac path has never used LM Studio for local coding models — it runs a `uv`-managed MLX server env and points pi at that endpoint as a second OpenAI-compatible provider.
+
+The server layer switched from [`mlx-openai-server`](https://pypi.org/project/mlx-openai-server/) to `mlx_lm.server` (bundled with `mlx-lm` itself) on 2026-07-17. The trigger was evaluating Devstral Small 2 24B as a primary-model candidate: `mlx-openai-server`'s own batch-scheduler thread doesn't register an MLX GPU stream, which crashes on Devstral's sliding-window attention cache —
 
 ```
-ValueError: Received 29 parameters not in model:
-mtp.fc.weight, mtp.layers.0.input_layernorm.weight, ...
+RuntimeError: There is no Stream(gpu, 1) in current thread.
 ```
 
-The wrapper version `mlx-llm-...-1.8.1` shipped 2026-05-16 still pins to the same `@25` vendor lib, so this is fixed only by a future `@26`-style vendor bump. Until then, the Mac path runs [`mlx-openai-server`](https://pypi.org/project/mlx-openai-server/) under a `uv`-managed env and points pi at that endpoint as a second OpenAI-compatible provider.
+— reproducing across `mlx-openai-server` 1.8.1 and 1.6.3, and persisting even with an unreleased upstream `mlx-lm` fix (see `ml-explore/mlx-lm#1181`, `#1256`), which narrows it to a bug in `mlx-openai-server`'s own code, not just an outdated dependency pin.
+
+Devstral itself was superseded the same day by `mlx-community/Qwen3.6-27B-4bit` after a head-to-head test showed near-identical size and speed but a much stronger published SWE-Bench score (see [Model picks](#model-picks-for-32-gb-unified-memory)) — and Qwen3.6-27B has MTP layers (`mtp_num_hidden_layers: 1` in its config), not a sliding-window cache, so it likely never hit the `mlx-openai-server` bug in the first place. `mlx_lm.server` was kept anyway: it already worked cleanly through two full model swaps and has a simpler flag surface, and there was no concrete reason to switch back. Trade-off either way: `mlx_lm.server` has no `--context-length` or `--kv-bits` flags, so there is no hard server-side context cap and no KV-cache quantization; see [Current Pi context status](#current-pi-context-status) for the measured-safe ceiling this relies on instead.
 
 ### Hardware profile
 
@@ -152,7 +155,7 @@ Apple M1 Pro, 32 GB unified memory, macOS 14+. **Only the explicitly marked Pi-v
 
 ### Build a uv-managed env
 
-`uv` is the standard Python toolchain on macOS; this keeps the runtime separate from system Python and trivially reproducible. Use Python 3.12 for v1. Do not baseline Python 3.14 yet; test it later only in a throwaway env after `mlx-openai-server` and its MLX dependencies explicitly support it.
+`uv` is the standard Python toolchain on macOS; this keeps the runtime separate from system Python and trivially reproducible. Use Python 3.12 for v1. Do not baseline Python 3.14 yet; test it later only in a throwaway env after `mlx-lm` and its dependencies explicitly support it.
 
 ```bash
 # One-time install
@@ -161,8 +164,12 @@ brew install uv
 # Create the env (project-local; lives outside this repo)
 uv venv ~/projects/mac-mlx-env --python 3.12
 
-# Install the OpenAI-compatible MLX server stack.
-uv pip install --python ~/projects/mac-mlx-env/bin/python mlx-openai-server hf_transfer
+# mlx-lm is pinned to a specific unreleased commit until the Stream(gpu, N) fix ships
+# in a release; see "Why this exists" above.
+uv pip install --python ~/projects/mac-mlx-env/bin/python \
+  "mlx>=0.32.0" \
+  "git+https://github.com/ml-explore/mlx-lm.git@15b522f593b7ca5fbc0cac6f7572d40859d2d8fe" \
+  hf_transfer
 ```
 
 The same setup is captured in [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh). It defaults to `~/projects/mac-mlx-env` and Python 3.12; override with `MLX_SERVER_VENV` or `MLX_SERVER_PYTHON` for experiments.
@@ -175,8 +182,7 @@ For agent-safe automation, prefer direct venv executables instead of activation:
 
 ```bash
 ~/projects/mac-mlx-env/bin/python --version
-~/projects/mac-mlx-env/bin/mlx-openai-server --version
-~/projects/mac-mlx-env/bin/mlx-openai-server launch --help
+~/projects/mac-mlx-env/bin/mlx_lm.server --help
 ```
 
 If you want interactive activation in your own terminal, use the shell-specific entry point:
@@ -206,16 +212,10 @@ That would make Pi's `bash` tool execute commands via `fish -c`. It may make fis
 Primary offline model:
 
 ```bash
-~/projects/mac-mlx-env/bin/mlx-openai-server launch \
-  --model-type lm \
-  --model-path mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
-  --served-model-name mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
+~/projects/mac-mlx-env/bin/mlx_lm.server \
+  --model mlx-community/Qwen3.6-27B-4bit \
   --host 127.0.0.1 \
   --port 8080 \
-  --context-length 32768 \
-  --reasoning-parser qwen3_moe \
-  --tool-call-parser qwen3_coder \
-  --kv-bits 8 \
   --prompt-concurrency 1 \
   --decode-concurrency 4
 ```
@@ -226,7 +226,7 @@ After the server is listening, verify the id pi will see:
 curl -s http://localhost:8080/v1/models | jq
 ```
 
-That id is what must appear in `models.json`. `mlx-openai-server` supports `--served-model-name`, so the template uses the stable HF id rather than a per-machine absolute path.
+`mlx_lm.server` reports every MLX model found in the local HF cache at `/v1/models`, not just the one loaded — match on the `--model` value you passed, which is also what must appear in `models.json`. Unlike `mlx-openai-server`, there is no `--served-model-name` flag, so the id is always the HF repo id.
 
 For day-to-day use, prefer the repo wrapper:
 
@@ -240,7 +240,7 @@ Install the short command with:
 ln -sfn ~/projects/pi-agent-config/scripts/pi-mlx-local.sh ~/.local/bin/pi-mlx-local
 ```
 
-`pi-mlx-local` reuses an existing server on port 8080 only when `/v1/models` reports `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`. If another process owns the port, it exits with a clear error instead of killing or replacing that process. When it starts the server itself, logs go to `~/.local/state/pi-agent-config/mlx-openai-server.log`, and the server is left running after Pi exits.
+`pi-mlx-local` reuses an existing server on port 8080 only when `/v1/models` reports `mlx-community/Qwen3.6-27B-4bit`. If another process owns the port, it exits with a clear error instead of killing or replacing that process. When it starts the server itself, logs go to `~/.local/state/pi-agent-config/mlx-lm-server.log`, and the server is left running after Pi exits.
 
 ### Local test commands
 
@@ -249,20 +249,13 @@ Run these after the env is created and the model weights are cached:
 ```bash
 # Verify the env and CLI.
 ~/projects/mac-mlx-env/bin/python --version
-~/projects/mac-mlx-env/bin/mlx-openai-server --version
-~/projects/mac-mlx-env/bin/mlx-openai-server launch --help
+~/projects/mac-mlx-env/bin/mlx_lm.server --help
 
 # In terminal 1: start the server.
-~/projects/mac-mlx-env/bin/mlx-openai-server launch \
-  --model-type lm \
-  --model-path mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
-  --served-model-name mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
+~/projects/mac-mlx-env/bin/mlx_lm.server \
+  --model mlx-community/Qwen3.6-27B-4bit \
   --host 127.0.0.1 \
   --port 8080 \
-  --context-length 32768 \
-  --reasoning-parser qwen3_moe \
-  --tool-call-parser qwen3_coder \
-  --kv-bits 8 \
   --prompt-concurrency 1 \
   --decode-concurrency 4
 
@@ -271,13 +264,13 @@ curl -s http://127.0.0.1:8080/v1/models | jq
 curl -s http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer mlx-local' \
-  -d '{"model":"mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":16}' | jq
+  -d '{"model":"mlx-community/Qwen3.6-27B-4bit","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":16}' | jq
 
 # Verify pi sees the provider/model from models.json.
 pi --list-models
 
 # Smoke-test pi against the local server.
-pi --provider mlx-local --model mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit -p "Reply with exactly: ok"
+pi --provider mlx-local --model mlx-community/Qwen3.6-27B-4bit -p "Reply with exactly: ok"
 ```
 
 For the offline dry-run, turn Wi-Fi off after the model has loaded once from cache, restart the server, and repeat the `curl` and `pi -p` smoke tests. Then open an interactive pi session, use `/plan`, confirm diagnostic `bash` is available behind confirmation while `edit`/`write` are unavailable, switch back with `/ask`, and run a small read-edit-checkpoint loop.
@@ -286,10 +279,10 @@ For the offline dry-run, turn Wi-Fi off after the model has loaded once from cac
 
 | Model | Size on disk | Fits 32 GB? | Notes |
 |---|---|---|---|
-| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | ~22 GB | ✅ recommended | MoE 3B active; primary offline pi harness model |
-| `mlx-community/Qwen3.6-35B-A3B-4bit` | ~22 GB | ✅ fallback | MoE 3B active; use if the OptiQ build is unavailable |
-| `unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit` | ~22 GB | ✅ alternative | Unsloth Dynamic quant; better quality at same bits, but watch for arch-detection issues in mlx-lm |
-| `unsloth/Qwen3.6-27B-UD-MLX-4bit` | ~26 GB | ⚠ tight | Dense; leaves ~4 GB for KV cache + OS, will likely swap on long contexts |
+| `mlx-community/Qwen3.6-27B-4bit` | ~15 GB | ✅ recommended | Dense 27B, official mlx-community straightforward 4-bit conversion (verified via file sizes — not the same as `unsloth/Qwen3.6-27B-UD-MLX-4bit`, ~26 GB, Unsloth "Dynamic" mixed-precision quant closer to 8-bit average size). Primary offline pi harness model as of 2026-07-17, chosen over Devstral after a same-day head-to-head: near-identical disk/RAM footprint and prefill speed, but Qwen3.6-27B's published SWE-Bench (77.2%) is well ahead of Devstral's (68.0%) — see [Measurements](#measurements) for the raw comparison |
+| `mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit` | ~15 GB | ✅ works, no longer used | Dense 24B, purpose-built for agentic coding; was primary for a few hours on 2026-07-17 before the Qwen3.6-27B comparison above. Local cache deleted 2026-07-17 to reclaim disk; re-download if reverting |
+| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | ~22 GB | ✅ works, no longer used | MoE 3B active; was the primary model through 2026-07-17. Local cache deleted 2026-07-17 to reclaim disk; re-download if reverting |
+| `unsloth/Qwen3.6-27B-UD-MLX-4bit` | ~26 GB | ⚠ tight, not tested | Same base model as the recommended pick above but Unsloth's higher-effective-precision "Dynamic" quant; worth testing if 4-bit quality ever looks insufficient, but leaves much less KV-cache headroom |
 | `unsloth/Qwen3.6-27B-MLX-8bit` | ~28 GB | ❌ skip | No usable headroom |
 
 ### MTPLX — future option, currently unusable
@@ -300,48 +293,57 @@ For the offline dry-run, turn Wi-Fi off after the model has loaded once from cac
 
 ### Current Pi context status
 
-Current checked-in and live Mac Pi config agree on the server-side context window. This is a configured/Pi-visible state, not a max-stress-tested limit.
+`mlx_lm.server` has no `--context-length` flag — there is no hard server-side cap. `contextWindow` in `models.json` is purely a Pi-side compaction trigger, and it needs a real measured ceiling behind it so Pi never lets a session grow past what this Mac can actually hold in memory before `mlx_lm.server` OOMs (which, unlike a graceful truncation, would crash the server mid-task).
 
-| Model | Server context | Pi-visible context | Pi-visible max output | Thinking | Images |
-|---|---:|---:|---:|---|---|
-| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | 24576 | 24.6K | 8.2K | yes | no |
+| Model | Pi-visible context | Pi-visible max output | Thinking | Images |
+|---|---:|---:|---|---|
+| `mlx-community/Qwen3.6-27B-4bit` | 30.0K | 14.3K | yes | no |
 
 Source of truth:
 
-- [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) starts `mlx-openai-server` with `--context-length 24576`.
-- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `24576`, `reasoning` to `true`, and `input` to `["text"]`.
+- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `32768`, `reasoning` to `true`, and `input` to `["text"]`.
 - Pi-visible max output is `contextWindow - compaction.reserveTokens` (default `reserveTokens` 16384, unset in `~/.pi/agent/settings.json`).
+- `32768` is not itself a direct measurement — it's bounded interpolation between two real measured points: 30017 tokens ran comfortably (23 GB peak, several GB free throughout) and 48017 tokens ran but with under 1 GB free for extended stretches. 32768 sits much closer to the comfortable end. Native `max_position_embeddings` is 262144, far above any of these numbers. See [Measurements](#measurements) below for both data points.
 
 ### Pi smoke usage sample
 
-Measured with a no-session Pi JSON run, which includes Pi's real system prompt and tool overhead instead of only the raw `/v1/chat/completions` prompt.
+Measured 2026-07-17 with a no-session Pi JSON run against Qwen3.6 27B, which includes Pi's real system prompt and tool overhead instead of only the raw `/v1/chat/completions` prompt.
 
 | Command | Input | Output | Total tokens | Cache read | Cache write | Context used | Headroom |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `PI_OFFLINE=1 pi --mode json --no-session -p "Reply with exactly: ok"` | 5290 | 16 | 5306 | 0 | 0 | ~16.2% of 32768 | ~27462 tokens |
+| `PI_OFFLINE=1 pi --mode json --no-session -p "Reply with exactly: ok"` | 1 | 23 | 5313 | 5289 | 0 | ~16.2% of 32768 | ~27455 tokens |
 
-Warm prompt-cache reruns can split the same 5290 prompt tokens across `input` and `cacheRead`; a 2026-07-14 rerun reported `input=12`, `cacheRead=5278`, `cacheWrite=0`, `output=16`, and the same `totalTokens=5306`.
+This was a warm prompt-cache run — it followed an earlier `pi -p "Reply with exactly: ok"` smoke test that primed the same ~5289-token system prompt, hence `cacheRead=5289` and `input=1`. A cold run's `input` would be close to the full 5289 instead. `output=23` (vs 2 for the non-thinking Devstral run at the same prompt) reflects Qwen3.6's default thinking mode — the response includes a short `thinking` block before the final `ok`.
 
-### Measurements pending
+### Measurements
 
-| Quantity | Value | How to measure |
-|---|---|---|
-| Wall RAM at idle (model loaded, no context) | _needs measurement_ | `vm_stat` + Activity Monitor after server is listening |
-| Max usable context length | _needs measurement_ | Start at 16384, send increasing-length prompts until throughput collapses |
-| Decode tok/s @ 4096 ctx | _needs measurement_ | `mlx-openai-server` logs request timings; otherwise wall-clock a fixed-length completion |
-| Decode tok/s @ 32768 ctx | _needs measurement_ | same |
-| Pi auto-compaction threshold | follows `contextWindow` in models.json (dropped 32768 → 24576 on 2026-07-15 after an OOM at ~80% context usage at the old value) | 24576 is borrowed from the ROCm host's known-good value for the same model family, not independently measured on this Mac — drop further (e.g. 20480) if OOM recurs, raise only after real measurement |
+Measured 2026-07-17 on this Mac, single model resident, no other large processes running (avoid running two `mlx_lm.server`/`mlx-openai-server` instances at once — this host doesn't have room for two loaded models simultaneously and it was previously verified via Activity Monitor to force ~20 GB into swap, invalidating any timing/memory measurement taken under those conditions).
 
-When real numbers are in hand, replace this table and bump `contextWindow` in `pi-config/models.json` accordingly.
+| Quantity | Qwen3.6 27B (current) | Devstral 24B (superseded same day) | How measured |
+|---|---:|---:|---|
+| Wall RAM at idle (model loaded, no context) | 15 GB resident | 14 GB resident | `top -l 1 -pid <pid> -stats mem` right after `/v1/models` responds |
+| Test prompt size | 30017 tokens | 32010 tokens | Same synthetic large-prompt text, different tokenizer |
+| Peak RAM @ test prompt | 23 GB resident, 0 swap | 24 GB resident, 0 swap | Same `top` sampling, polled every 5s during a real `/v1/chat/completions` call |
+| Prefill throughput | 30017 tokens in 708s ≈ **42.4 tok/s** | 32010 tokens in 814s ≈ 39.3 tok/s | Wall-clock a single large-prompt `curl` request |
+| Published SWE-Bench Verified | **77.2%** | 68.0% | Vendor-published, not independently verified at this specific 4-bit quant |
+| Pi auto-compaction threshold | `contextWindow` **32768** in `pi-config/models.json` | 32768 (no longer live, same number by coincidence) | Interpolated between two real measured points — see the ceiling-test note below |
+
+Both models are dense (all params active per token, unlike the old Qwen3.6-35B-A3B MoE setup) — this prefill rate is roughly **9× slower** than that MoE setup's observed ~364 tok/s prefill (3B active). This was a known, accepted trade-off: less memory pressure and a larger safe context window than the old 24576 cap, at the cost of prefill speed on large prompts. See [Why active params matter](#why-active-params-matter-and-toks-alone-doesnt).
+
+Qwen3.6 27B won the comparison on published benchmark quality at essentially identical size/speed/memory cost, which is why it replaced Devstral as primary within the same day.
+
+**Ceiling test (2026-07-18):** pushed a real 48017-token prompt at the live production server to find the actual limit, not just extrapolate. Result: it completed (HTTP 200, 1194s ≈ 40.2 tok/s), but system-wide free memory dropped under 1 GB repeatedly for extended stretches, and total wired memory peaked at 26 GB — well above the model process's own steady-state resident size, because transient GPU compute buffers during active prefill spike higher than the settled per-token KV-cache growth rate would predict (the simple ~266 KB/token model from the 30017-token test undershoots the real peak at this size). Two preconditions were needed even to attempt it safely: no other model server running, and `purge` (via `sudo purge`) to clear ~7 GB of stale compressor pages that had accumulated over the session — without that, the same test failed to even start safely (636 MB free at idle).
+
+**Conclusion: 48K tokens works but has no real safety margin on this 32 GB Mac, especially with other apps (browser, IDE) also resident.** Don't run production at 48017. But the gap between the two real data points (comfortable at 30017, tight at 48017) is wide enough to interpolate a value confidently: `contextWindow` was raised **30720 → 32768**, a small, safely-bounded step from the comfortable end, not a leap toward the tight end. This was not independently re-measured at exactly 32768 — if a future OOM occurs, the first thing to check is whether this specific value needs its own direct test rather than trusting the interpolation further.
 
 ### Pi usage notes
 
-- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit`; use `pi-mlx-local` when you want the wrapper to start or reuse `mlx-openai-server` first.
+- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-27B-4bit`; use `pi-mlx-local` when you want the wrapper to start or reuse `mlx_lm.server` first.
 - Use `/model` only when you intentionally want to switch away from the Mac `mlx-local` default.
 - `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
 - Use `/plan` for planning and inspection. Confirmed `bash` is available there for diagnostics such as `git status`, `rg`, `ls`, and endpoint probes.
 - Switch to `/ask` before file edits, installs, test runs with side effects, server starts, commits, pushes, or other state-changing commands.
-- Keep `"supportsDeveloperRole": false` inside the `compat` block of each raw `mlx-local` Qwen model unless you have verified the server normalizes `developer` to `system`. Qwen3.6's chat template expects `system`/`user`/`assistant`/`tool`; the flag tells pi to send `system`.
+- Keep `"supportsDeveloperRole": false` inside the `compat` block of each raw `mlx-local` model unless you have verified the server normalizes `developer` to `system`. Both Qwen3.6's and Devstral's chat templates only handle `system`/`user`/`assistant`/`tool` and raise on anything else; the flag tells pi to send `system`.
 
 ---
 
@@ -391,7 +393,7 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
       "api": "openai-completions",
       "apiKey": "mlx-local",
       "models": [
-        { "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
+        { "id": "mlx-community/Qwen3.6-27B-4bit", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
       ]
     },
     "ollama-cloud": {
@@ -406,7 +408,7 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
 }
 ```
 
-The `id` strings must match the model id the server reports at `GET /v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` (LM Studio, CachyOS) or `curl -s http://localhost:8080/v1/models | jq` (`mlx-openai-server`, Mac) after loading a model. See **Mac alternative — mlx-openai-server on M1 Pro 32 GB** for setting up the second endpoint.
+The `id` strings must match the model id the server reports at `GET /v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` (LM Studio, CachyOS) or `curl -s http://localhost:8080/v1/models | jq` (`mlx_lm.server`, Mac) after loading a model. See **Mac alternative — mlx_lm.server on M1 Pro 32 GB** for setting up the second endpoint.
 
 `contextWindow` must match the **Context Length** you set in LM Studio's load dialog for that model (see "Per-model deltas" below). Pi defaults to 128000 if omitted, which means auto-compaction won't fire until well past the model's actual loaded context — and LM Studio will silently truncate the prompt instead. If you change a model's context in LM Studio, change it here too. Verify with `pi --list-models`.
 
@@ -426,7 +428,7 @@ The Mac config also carries a `llamacpp` provider pointing at a raw `llama-serve
 
 ### Current live Mac settings
 
-The inspected live `~/.pi/agent/settings.json` currently sets plain `pi` to `defaultProvider: "mlx-local"` and `defaultModel: "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit"`. It also keeps `PI_OFFLINE: true`, `defaultThinkingLevel: "medium"`, and the external package list to `npm:pi-bar`. `~/.pi/agent/APPEND_SYSTEM.md` is symlinked to [`pi-config/APPEND_SYSTEM.md.example`](./pi-config/APPEND_SYSTEM.md.example), and the live symlinked extensions are `claude-mode`, `fetch`, `web-search`, `git-checkpoint`, `question`, and `todo-tracker`.
+The inspected live `~/.pi/agent/settings.json` currently sets plain `pi` to `defaultProvider: "mlx-local"` and `defaultModel: "mlx-community/Qwen3.6-27B-4bit"`. It also keeps `PI_OFFLINE: true`, `defaultThinkingLevel: "medium"`, and the external package list to `npm:pi-bar`. `~/.pi/agent/APPEND_SYSTEM.md` is symlinked to [`pi-config/APPEND_SYSTEM.md.example`](./pi-config/APPEND_SYSTEM.md.example), and the live symlinked extensions are `claude-mode`, `fetch`, `web-search`, `git-checkpoint`, `question`, and `todo-tracker`.
 
 ### LM Studio server prerequisites
 
@@ -592,6 +594,21 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ---
 
 ## Change notes
+
+### 2026-07-18
+- Ran a real ceiling test on the live Mac production server to check whether `contextWindow` (30720) could safely be raised, rather than guessing from the linear growth-rate projection noted the day before. Sent a real 48017-token prompt: it completed (HTTP 200, 1194s ≈ 40.2 tok/s) but drove system-wide free memory under 1 GB for extended stretches and wired memory to a 26 GB peak — well above what the simple per-token KV growth estimate predicted, because transient GPU compute buffers during active prefill spike higher than steady-state resident size. Needed `sudo purge` first to clear ~7 GB of stale compressor pages accumulated over the session; without it, the test wasn't even safe to attempt (636 MB free at idle).
+- Raised `contextWindow` **30720 → 32768** based on bounded interpolation between the two real data points (comfortable at 30017 tokens, tight at 48017 tokens) — not a fresh direct measurement at 32768 itself. Updated `pi-config/models.json` and the live `~/.pi/agent/models.json` to match.
+
+### 2026-07-17
+- Switched the Mac `mlx-local` primary model from Qwen3.6 35B A3B (MoE) to **Qwen3.6 27B dense** (`mlx-community/Qwen3.6-27B-4bit`, ~15 GB), via a same-day Devstral Small 2 24B detour. Full sequence:
+  1. Investigated Devstral Small 2 24B as a candidate for more context headroom. Found `mlx-openai-server` fundamentally broken for it — its own batch-scheduler thread doesn't register an MLX GPU stream, crashing with `RuntimeError: There is no Stream(gpu, N) in current thread` on Devstral's sliding-window attention cache, across both 1.8.1 and 1.6.3, even with an unreleased upstream `mlx-lm` fix (`ml-explore/mlx-lm#1181`, `#1256`).
+  2. Switched the server layer to `mlx_lm.server` (bundled with `mlx-lm`), which doesn't hit the bug. Added [`scripts/setup-mac-mlx-env.sh`](./scripts/setup-mac-mlx-env.sh) pin to `mlx>=0.32.0` + `mlx-lm` from a specific unreleased git commit (`15b522f`) for the same fix.
+  3. Deployed Devstral to production, measured a real 32010-token prompt: 24 GB peak resident, 0 swap, 814s (~39.3 tok/s prefill) — confirmed ~9× slower prefill than the outgoing MoE model, an accepted trade-off for the memory headroom. Set `contextWindow` to a directly-measured 32768.
+  4. User pointed out an official `mlx-community/Qwen3.6-27B-4bit` quant exists at ~15 GB (distinct from the ~26 GB `unsloth` "Dynamic" quant this README previously documented as the dense-27B pick). Tested it head-to-head under the same conditions: 30017-token prompt, 23 GB peak, 708s (~42.4 tok/s) — essentially tied with Devstral on size/speed, but with a published SWE-Bench Verified of 77.2% vs Devstral's 68.0%.
+  5. Switched primary to Qwen3.6 27B on that result. Deleted both the old Qwen3.6-35B-A3B (~23 GB) and Devstral (~14 GB) HF caches to reclaim disk. Set `contextWindow` to a directly-measured 30720 (real tested point: 30017 tokens, 23 GB peak).
+- Updated [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh), [`pi-config/models.json`](./pi-config/models.json), and the live `~/.pi/agent/{models.json,settings.json}` accordingly. `reasoning` is back to `true` with `thinkingFormat: "qwen"` (Qwen3.6 thinks by default; Devstral did not).
+- All testing before production cutover used a throwaway `uv` venv (`~/projects/mac-mlx-env-throwaway`) on a dedicated git branch, per this repo's convention of not risking the working production env; production itself was only touched after each candidate was verified working end-to-end via `pi`.
+- Lesson learned mid-investigation: running two `mlx_lm.server`/`mlx-openai-server` instances simultaneously on this 32 GB host forces ~20 GB into swap (confirmed via Activity Monitor) and silently invalidates any timing/memory measurement taken under those conditions — always stop one model fully before loading another for a clean test.
 
 ### 2026-07-15
 - Dropped the Mac `mlx-local` Qwen3.6 35B A3B OptiQ harness context window 32768 → 24576 (`scripts/pi-mlx-local.sh` `CONTEXT_LENGTH`, `pi-config/models.json` and live `~/.pi/agent/models.json` `contextWindow`) after an OOM at ~80% context usage (~26k of 32768 tokens) — well past where the default `compaction.reserveTokens` (16384) should have triggered compaction. 24576 matches the already-validated context length for the same model family on the ROCm host; still flagged as an unmeasured first-pass mitigation for this Mac specifically, not a confirmed safe ceiling. `compaction.reserveTokens`/`keepRecentTokens` were left at defaults — only the context-window lever was tuned this round.

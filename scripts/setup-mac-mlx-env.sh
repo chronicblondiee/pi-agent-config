@@ -11,7 +11,15 @@ fi
 
 uv venv "$VENV" --python "$PYTHON_VERSION"
 "$VENV/bin/python" --version
-uv pip install --python "$VENV/bin/python" -U mlx-openai-server hf_transfer
+
+# mlx-lm is pinned to a specific unreleased commit: PyPI's latest (0.31.3) hits
+# "RuntimeError: There is no Stream(gpu, N) in current thread" under mlx_lm.server's
+# threaded batch scheduler on sliding-window/rotating-KV-cache models (e.g. Devstral).
+# See ml-explore/mlx-lm#1181 and #1256. Remove the pin once a release includes the fix.
+uv pip install --python "$VENV/bin/python" \
+  "mlx>=0.32.0" \
+  "git+https://github.com/ml-explore/mlx-lm.git@15b522f593b7ca5fbc0cac6f7572d40859d2d8fe" \
+  hf_transfer
 
 cat <<EOF
 
@@ -23,5 +31,5 @@ Activate it with:
 
 Verify:
   "$VENV/bin/python" --version
-  "$VENV/bin/mlx-openai-server" --help
+  "$VENV/bin/mlx_lm.server" --help
 EOF

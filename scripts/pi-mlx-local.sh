@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 set -u
 
-MODEL="mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit"
+MODEL="mlx-community/Qwen3.6-27B-4bit"
 PROVIDER="mlx-local"
 HOST="127.0.0.1"
 PORT="8080"
-CONTEXT_LENGTH="24576"
 VENV="$HOME/projects/mac-mlx-env"
-SERVER="$VENV/bin/mlx-openai-server"
+SERVER="$VENV/bin/mlx_lm.server"
 BASE_URL="http://$HOST:$PORT/v1"
-LOG="$HOME/.local/state/pi-agent-config/mlx-openai-server.log"
+LOG="$HOME/.local/state/pi-agent-config/mlx-lm-server.log"
 WAIT_SECONDS="180"
 CURL_TIMEOUT="10"
 
@@ -68,7 +67,7 @@ ensure_server() {
   models="$(fetch_models)"
   if [ $? -eq 0 ]; then
     if have_expected_model "$models"; then
-      printf 'Reusing mlx-openai-server on %s serving %s\n' "$BASE_URL" "$MODEL" >&2
+      printf 'Reusing mlx_lm.server on %s serving %s\n' "$BASE_URL" "$MODEL" >&2
       return 0
     fi
 
@@ -82,18 +81,18 @@ ensure_server() {
   [ -x "$SERVER" ] || die "missing executable: $SERVER; run scripts/setup-mac-mlx-env.sh first"
 
   mkdir -p "$(dirname "$LOG")" || die "could not create log directory for $LOG"
-  printf 'Starting mlx-openai-server for %s at %s; logs: %s\n' "$MODEL" "$BASE_URL" "$LOG" >&2
+  printf 'Starting mlx_lm.server for %s at %s; logs: %s\n' "$MODEL" "$BASE_URL" "$LOG" >&2
 
-  nohup "$SERVER" launch \
-    --model-type lm \
-    --model-path "$MODEL" \
-    --served-model-name "$MODEL" \
+  # mlx_lm.server (not mlx-openai-server) is used deliberately here: mlx-openai-server's
+  # own batch-scheduler threading is broken for Devstral's sliding-window attention cache
+  # (RuntimeError: no Stream(gpu, N) in current thread), even with a patched mlx-lm.
+  # Trade-off: mlx_lm.server has no --context-length or --kv-bits flags, so there is no
+  # hard server-side cap and no KV quantization; context safety relies on the measured
+  # ceiling documented in the README instead.
+  nohup "$SERVER" \
+    --model "$MODEL" \
     --host "$HOST" \
     --port "$PORT" \
-    --context-length "$CONTEXT_LENGTH" \
-    --reasoning-parser qwen3_moe \
-    --tool-call-parser qwen3_coder \
-    --kv-bits 8 \
     --prompt-concurrency 1 \
     --decode-concurrency 4 \
     >>"$LOG" 2>&1 &
@@ -109,7 +108,7 @@ wait_for_model() {
   while [ "$SECONDS" -lt "$deadline" ]; do
     models="$(fetch_models)"
     if [ $? -eq 0 ] && have_expected_model "$models"; then
-      printf 'mlx-openai-server is ready at %s\n' "$BASE_URL" >&2
+      printf 'mlx_lm.server is ready at %s\n' "$BASE_URL" >&2
       return 0
     fi
     sleep 2
