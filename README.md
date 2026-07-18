@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-18 — added an isolated MTPLX headless long-context test branch path and first curl-level MTPLX-vs-`mlx_lm.server` benchmark results without changing the production Mac `mlx-local` fallback; earlier same-day notes: ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); clarified Mac prefill vs decode throughput and memory-bandwidth scaling; see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
+**Last updated:** 2026-07-18 — promoted MTPLX to the primary Mac-local Pi provider, pinned the MTPLX env to Python 3.12.13 / MTPLX 2.1.0, and added first curl-level MTPLX-vs-`mlx_lm.server` benchmark results; earlier same-day notes: ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); clarified Mac prefill vs decode throughput and memory-bandwidth scaling; see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
 
 ---
 
@@ -285,31 +285,32 @@ For the offline dry-run, turn Wi-Fi off after the model has loaded once from cac
 | `unsloth/Qwen3.6-27B-UD-MLX-4bit` | ~26 GB | ⚠ tight, not tested | Same base model as the recommended pick above but Unsloth's higher-effective-precision "Dynamic" quant; worth testing if 4-bit quality ever looks insufficient, but leaves much less KV-cache headroom |
 | `unsloth/Qwen3.6-27B-MLX-8bit` | ~28 GB | ❌ skip | No usable headroom |
 
-### MTPLX — isolated headless long-context test
+### MTPLX — primary Mac local runtime
 
-[MTPLX](https://github.com/youssofal/MTPLX) is a native MTP-aware MLX runtime claiming ~2.24× decode TPS on Qwen3.6 27B by actually executing the MTP heads as a built-in speculative decoder. It also exposes an OpenAI-compatible server (`/v1/chat/completions`, `/v1/models`, `/health`, `/metrics`), so it can be tested against Pi without replacing the current `mlx-local` fallback.
+[MTPLX](https://github.com/youssofal/MTPLX) is the primary Mac-local Pi runtime as of 2026-07-18. It is a native MTP-aware MLX runtime claiming ~2.24x decode TPS on Qwen3.6 27B by actually executing the MTP heads as a built-in speculative decoder. It also exposes an OpenAI-compatible server (`/v1/chat/completions`, `/v1/models`, `/health`, `/metrics`), so it fits the same Pi provider shape as the previous `mlx-local` fallback.
 
-This is deliberately branch-only and isolated:
+The old `mlx_lm.server` setup remains installed as a fallback; MTPLX is now the live default provider/model in `~/.pi/agent/settings.json`.
 
-| Item | Production | MTPLX test |
+| Item | MTPLX primary | MLX fallback |
 |---|---|---|
-| Runtime env | `~/projects/mac-mlx-env` | `~/projects/mac-mtplx-env` |
-| Provider | `mlx-local` | `mtplx-test` |
-| Port | `8080` | `18080` |
-| Pi agent dir | `~/.pi/agent` | `~/.pi/agent-mtplx-test` |
-| Model id seen by Pi | `mlx-community/Qwen3.6-27B-4bit` | `mtplx-qwen36-27b-optimized-speed-fp16` |
-| Repo wrapper | [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) | [`scripts/pi-mtplx-test.sh`](./scripts/pi-mtplx-test.sh) |
+| Runtime env | `~/projects/mac-mtplx-env` | `~/projects/mac-mlx-env` |
+| Python | `3.12.13` requested; wrappers require `3.12.x` | `3.12` |
+| Provider | `mtplx-local` | `mlx-local` |
+| Port | `18080` | `8080` |
+| Pi agent dir | `~/.pi/agent` | `~/.pi/agent` |
+| Model id seen by Pi | `mtplx-qwen36-27b-optimized-speed-fp16` | `mlx-community/Qwen3.6-27B-4bit` |
+| Repo wrapper | [`scripts/pi-mtplx-local.sh`](./scripts/pi-mtplx-local.sh) | [`scripts/pi-mlx-local.sh`](./scripts/pi-mlx-local.sh) |
 
-Set up the test env:
+Set up the MTPLX env:
 
 ```bash
 scripts/setup-mac-mtplx-env.sh
 ```
 
-It defaults to Python 3.12, `~/projects/mac-mtplx-env`, and `mtplx==2.1.0`. The first candidate model is `Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed-FP16`; if `mtplx inspect` rejects it, use MTPLX's recommended Qwen3.6 27B catalog build instead:
+It defaults to Python 3.12.13, `~/projects/mac-mtplx-env`, and `mtplx==2.1.0`. MTPLX package metadata currently allows Python `>=3.11`, but this local env intentionally pins the known-good 3.12 line; do not use the `~/.local/bin/python3.14` symlink for this runtime. The selected model is `Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed-FP16`; if `mtplx inspect` rejects it, use MTPLX's recommended Qwen3.6 27B catalog build instead:
 
 ```bash
-MTPLX_HF_MODEL=<catalog-build> scripts/pi-mtplx-test.sh -p "Reply with exactly: ok"
+MTPLX_HF_MODEL=<catalog-build> scripts/pi-mtplx-local.sh -p "Reply with exactly: ok"
 ```
 
 Use the repo wrapper or the venv executable, not bare `mtplx` from `PATH`. A globally installed older MTPLX may report a different version, reject current `mtplx_runtime.json` profiles such as `turbo`, and default to port `8000` instead of the isolated test port.
@@ -337,14 +338,15 @@ curl -fsS http://127.0.0.1:18080/v1/chat/completions \
   -d '{"model":"mtplx-qwen36-27b-optimized-speed-fp16","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":64}' | jq
 ```
 
-Only after those pass, run Pi through the isolated agent directory and test provider:
+Run Pi through the primary wrapper so the MTPLX server is started or reused before Pi connects:
 
 ```bash
-PI_CODING_AGENT_DIR=$HOME/.pi/agent-mtplx-test \
-  pi --provider mtplx-test --model mtplx-qwen36-27b-optimized-speed-fp16 --no-session -p "Reply with exactly: ok"
+pi-mtplx-local --no-session -p "Reply with exactly: ok"
 ```
 
-Initial `contextWindow` is 32768 in [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json), matching the current production compaction window. Measure tiers in order: 32768, 40960, 49152, then 65536 only if 49152 leaves at least 2-3 GB free with no swap storm. Record results in [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md). Promote no default changes unless an exact tier passes two clean runs.
+Plain `pi` now defaults to `mtplx-local` / `mtplx-qwen36-27b-optimized-speed-fp16`, but Pi itself still does not start local model servers. Use plain `pi` only when MTPLX is already listening on `127.0.0.1:18080`; otherwise use `pi-mtplx-local`.
+
+Initial `contextWindow` is 32768 in [`pi-config/models.json`](./pi-config/models.json), matching the current production compaction window. Measure deeper tiers in order: 40960, 49152, then 65536 only if 49152 leaves at least 2-3 GB free with no swap storm. Record results in [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md).
 
 First curl-level benchmark pass, measured 2026-07-18 with cache-busted prompts and one server resident at a time: MTPLX completed the 32768 target in 605.8s for 36361 prompt tokens + 64 generated tokens; the existing `mlx_lm.server` control completed the same tier in 924.6s for 36364 prompt tokens + 64 generated tokens. That is a 1.53x wall-time win for MTPLX on this workload, but it is not a pure same-weights runtime comparison: MTPLX used the FP16 MTPLX-optimized model while the control used the current 4-bit production model. Full raw results and memory notes are in [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md#benchmark-results-mtplx-vs-mlx_lmserver).
 
@@ -354,11 +356,12 @@ First curl-level benchmark pass, measured 2026-07-18 with cache-busted prompts a
 
 | Model | Pi-visible context | Pi-visible max output | Thinking | Images |
 |---|---:|---:|---|---|
+| `mtplx-qwen36-27b-optimized-speed-fp16` | 32.8K | 16.4K | yes | no |
 | `mlx-community/Qwen3.6-27B-4bit` | 30.0K | 14.3K | yes | no |
 
 Source of truth:
 
-- [`pi-config/models.json`](./pi-config/models.json) sets the `mlx-local` model `contextWindow` to `32768`, `reasoning` to `true`, and `input` to `["text"]`.
+- [`pi-config/models.json`](./pi-config/models.json) sets the `mtplx-local` and `mlx-local` model `contextWindow` values to `32768`, `reasoning` to `true`, and `input` to `["text"]`.
 - Pi-visible max output is `contextWindow - compaction.reserveTokens` (default `reserveTokens` 16384, unset in `~/.pi/agent/settings.json`).
 - `32768` is not itself a direct measurement — it's bounded interpolation between two real measured points: 30017 tokens ran comfortably (23 GB peak, several GB free throughout) and 48017 tokens ran but with under 1 GB free for extended stretches. 32768 sits much closer to the comfortable end. Native `max_position_embeddings` is 262144, far above any of these numbers. See [Measurements](#measurements) below for both data points.
 
@@ -403,12 +406,12 @@ Qwen3.6 27B won the comparison on published benchmark quality at essentially ide
 
 ### Pi usage notes
 
-- Plain `pi` now defaults to provider `mlx-local`, model `mlx-community/Qwen3.6-27B-4bit`; use `pi-mlx-local` when you want the wrapper to start or reuse `mlx_lm.server` first.
-- Use `/model` only when you intentionally want to switch away from the Mac `mlx-local` default.
+- Plain `pi` now defaults to provider `mtplx-local`, model `mtplx-qwen36-27b-optimized-speed-fp16`; use `pi-mtplx-local` when you want the wrapper to start or reuse MTPLX first.
+- Use `/model` only when you intentionally want to switch away from the Mac `mtplx-local` default.
 - `input` is restricted to `["text"]` — vision goes through `mlx_vlm` which is the broken path. If you need image input on Mac, use the Linux LM Studio entries.
 - Use `/plan` for planning and inspection. Confirmed `bash` is available there for diagnostics such as `git status`, `rg`, `ls`, and endpoint probes.
 - Switch to `/ask` before file edits, installs, test runs with side effects, server starts, commits, pushes, or other state-changing commands.
-- Keep `"supportsDeveloperRole": false` inside the `compat` block of each raw `mlx-local` model unless you have verified the server normalizes `developer` to `system`. Both Qwen3.6's and Devstral's chat templates only handle `system`/`user`/`assistant`/`tool` and raise on anything else; the flag tells pi to send `system`.
+- Keep `"supportsDeveloperRole": false` inside the `compat` block of each raw local Qwen model unless you have verified the server normalizes `developer` to `system`. Qwen3.6's chat template handles `system`/`user`/`assistant`/`tool`; the flag tells pi to send `system`.
 
 ---
 
@@ -430,7 +433,7 @@ Pi is `@earendil-works/pi-coding-agent` on npm. Repo: <https://github.com/badlog
 
 ### `models.json` template
 
-A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.json). The checked-in template is currently synced with the live Mac `~/.pi/agent/models.json`: LM Studio on `:1234`, Odysseus `llamacpp` on `:8000`, the default `mlx-local` Qwen3.6 27B harness on `:8080`, and an `ollama-cloud` placeholder. The branch-only MTPLX test provider lives separately in [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json) and should be copied only into `~/.pi/agent-mtplx-test`. Key shape:
+A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.json). The checked-in template is currently synced with the live Mac `~/.pi/agent/models.json`: LM Studio on `:1234`, Odysseus `llamacpp` on `:8000`, the default `mtplx-local` Qwen3.6 27B harness on `:18080`, the `mlx-local` fallback on `:8080`, and an `ollama-cloud` placeholder. The isolated MTPLX test provider lives separately in [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json) and should be copied only into `~/.pi/agent-mtplx-test`. Key shape:
 
 ```json
 {
@@ -461,6 +464,14 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
         { "id": "mlx-community/Qwen3.6-27B-4bit", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
       ]
     },
+    "mtplx-local": {
+      "baseUrl": "http://127.0.0.1:18080/v1",
+      "api": "openai-completions",
+      "apiKey": "mtplx-local",
+      "models": [
+        { "id": "mtplx-qwen36-27b-optimized-speed-fp16", "input": ["text"], "contextWindow": 32768, "reasoning": true, "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false } }
+      ]
+    },
     "ollama-cloud": {
       "baseUrl": "https://ollama.com/v1",
       "api": "openai-completions",
@@ -473,7 +484,7 @@ A copy-paste ready version is in [`pi-config/models.json`](./pi-config/models.js
 }
 ```
 
-The `id` strings must match the model id the server reports at `GET /v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` (LM Studio, CachyOS) or `curl -s http://localhost:8080/v1/models | jq` (`mlx_lm.server`, Mac) after loading a model. See **Mac alternative — mlx_lm.server on M1 Pro 32 GB** for setting up the second endpoint.
+The `id` strings must match the model id the server reports at `GET /v1/models` — verify with `curl -s http://localhost:1234/v1/models | jq` (LM Studio, CachyOS), `curl -s http://127.0.0.1:18080/v1/models | jq` (MTPLX, Mac), or `curl -s http://localhost:8080/v1/models | jq` (`mlx_lm.server`, Mac) after loading a model.
 
 `contextWindow` must match the **Context Length** you set in LM Studio's load dialog for that model (see "Per-model deltas" below). Pi defaults to 128000 if omitted, which means auto-compaction won't fire until well past the model's actual loaded context — and LM Studio will silently truncate the prompt instead. If you change a model's context in LM Studio, change it here too. Verify with `pi --list-models`.
 
@@ -493,7 +504,7 @@ The Mac config also carries a `llamacpp` provider pointing at a raw `llama-serve
 
 ### Current live Mac settings
 
-The inspected live `~/.pi/agent/settings.json` currently sets plain `pi` to `defaultProvider: "mlx-local"` and `defaultModel: "mlx-community/Qwen3.6-27B-4bit"`. It also keeps `PI_OFFLINE: true`, `defaultThinkingLevel: "medium"`, and the external package list to `npm:pi-bar`. `~/.pi/agent/APPEND_SYSTEM.md` is symlinked to [`pi-config/APPEND_SYSTEM.md.example`](./pi-config/APPEND_SYSTEM.md.example), and the live symlinked extensions are `claude-mode`, `fetch`, `web-search`, `git-checkpoint`, `question`, and `todo-tracker`.
+The inspected live `~/.pi/agent/settings.json` currently sets plain `pi` to `defaultProvider: "mtplx-local"` and `defaultModel: "mtplx-qwen36-27b-optimized-speed-fp16"`. It also keeps `PI_OFFLINE: true`, `defaultThinkingLevel: "medium"`, and the external package list to `npm:pi-bar`. `~/.pi/agent/APPEND_SYSTEM.md` is symlinked to [`pi-config/APPEND_SYSTEM.md.example`](./pi-config/APPEND_SYSTEM.md.example), and the live symlinked extensions are `claude-mode`, `fetch`, `web-search`, `git-checkpoint`, `question`, and `todo-tracker`.
 
 ### LM Studio server prerequisites
 
@@ -661,7 +672,9 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-18
-- Added an isolated MTPLX headless long-context test path on branch `test/mac-headless-context-runtimes`: [`scripts/setup-mac-mtplx-env.sh`](./scripts/setup-mac-mtplx-env.sh), [`scripts/pi-mtplx-test.sh`](./scripts/pi-mtplx-test.sh), [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json), and [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md). This uses `mtplx==2.1.0`, `~/projects/mac-mtplx-env`, port `18080`, provider `mtplx-test`, model id `mtplx-qwen36-27b-optimized-speed-fp16`, and `~/.pi/agent-mtplx-test`; it deliberately leaves `scripts/pi-mlx-local.sh`, the production `mlx-local` provider, and live `~/.pi/agent` untouched.
+- Promoted MTPLX to the live Mac-local Pi default: added `mtplx-local` to [`pi-config/models.json`](./pi-config/models.json), set live `~/.pi/agent/settings.json` to `defaultProvider: "mtplx-local"` and `defaultModel: "mtplx-qwen36-27b-optimized-speed-fp16"`, and added [`scripts/pi-mtplx-local.sh`](./scripts/pi-mtplx-local.sh) plus the `~/.local/bin/pi-mtplx-local` symlink. Live config backups were written as `~/.pi/agent/models.json.bak.20260718-164731` and `~/.pi/agent/settings.json.bak.20260718-164731`.
+- Tightened the MTPLX Python pin: [`scripts/setup-mac-mtplx-env.sh`](./scripts/setup-mac-mtplx-env.sh) now requests Python `3.12.13`, and both MTPLX wrappers require the venv to be Python `3.12.x` before starting the server. The installed `mtplx==2.1.0` metadata allows Python `>=3.11`, but this local runtime stays on the known-good 3.12 line instead of the machine-wide `~/.local/bin/python3.14` symlink.
+- Added an isolated MTPLX headless long-context test path on branch `test/mac-headless-context-runtimes`: [`scripts/setup-mac-mtplx-env.sh`](./scripts/setup-mac-mtplx-env.sh), [`scripts/pi-mtplx-test.sh`](./scripts/pi-mtplx-test.sh), [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json), and [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md). This originally used `mtplx==2.1.0`, `~/projects/mac-mtplx-env`, port `18080`, provider `mtplx-test`, model id `mtplx-qwen36-27b-optimized-speed-fp16`, and `~/.pi/agent-mtplx-test` to evaluate MTPLX without disturbing the then-production `mlx-local` provider.
 - Added the first curl-level runtime benchmark results for the branch: at the 32768 target, MTPLX completed 36361 prompt tokens + 64 generated tokens in 605.8s; the existing `mlx_lm.server` control completed 36364 prompt tokens + 64 generated tokens in 924.6s. MTPLX was 1.53x faster on wall time for that workload, with the caveat that this compares the FP16 MTPLX-optimized model to the production 4-bit MLX control model. Raw JSON results are under [`research/results/`](./research/results/).
 - Ran a real ceiling test on the live Mac production server to check whether `contextWindow` (30720) could safely be raised, rather than guessing from the linear growth-rate projection noted the day before. Sent a real 48017-token prompt: it completed (HTTP 200, 1194s ≈ 40.2 tok/s) but drove system-wide free memory under 1 GB for extended stretches and wired memory to a 26 GB peak — well above what the simple per-token KV growth estimate predicted, because transient GPU compute buffers during active prefill spike higher than steady-state resident size. Needed `sudo purge` first to clear ~7 GB of stale compressor pages accumulated over the session; without it, the test wasn't even safe to attempt (636 MB free at idle).
 - Raised `contextWindow` **30720 → 32768** based on bounded interpolation between the two real data points (comfortable at 30017 tokens, tight at 48017 tokens) — not a fresh direct measurement at 32768 itself. Updated `pi-config/models.json` and the live `~/.pi/agent/models.json` to match.

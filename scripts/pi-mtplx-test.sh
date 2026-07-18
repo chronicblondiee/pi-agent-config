@@ -19,6 +19,7 @@ MODELS_TEMPLATE="$TEMPLATE_DIR/models.mtplx-test.json"
 LOG="${MTPLX_LOG:-$HOME/.local/state/pi-agent-config/mtplx-test-server.log}"
 WAIT_SECONDS="${MTPLX_WAIT_SECONDS:-240}"
 CURL_TIMEOUT="${MTPLX_CURL_TIMEOUT:-10}"
+CHAT_TIMEOUT="${MTPLX_CHAT_TIMEOUT:-180}"
 DOWNLOAD_MODEL="${MTPLX_DOWNLOAD:-1}"
 
 die() {
@@ -132,6 +133,7 @@ wait_for_server() {
 ensure_server() {
   local models
   local download_arg
+  local launch_spec
   local server_pid
 
   models="$(fetch_json "$OPENAI_BASE_URL/models")"
@@ -158,19 +160,32 @@ ensure_server() {
     download_arg="--download"
   fi
 
-  nohup "$MTPLX" quickstart \
+  launch_spec="$("$MTPLX" quickstart \
     $download_arg \
     --model "$MTPLX_HF_MODEL" \
+    --model-id "$MODEL" \
     --profile sustained \
     --port "$PORT" \
-    >>"$LOG" 2>&1 &
+    --dry-run \
+    --json)" || die "could not build MTPLX server command"
+
+  MTPLX_LAUNCH_SPEC="$launch_spec" nohup "$PYTHON" - <<'PY' >>"$LOG" 2>&1 &
+import json
+import os
+
+spec = json.loads(os.environ["MTPLX_LAUNCH_SPEC"])
+env = os.environ.copy()
+env.update(spec.get("env", {}))
+argv = spec["argv"]
+os.execvpe(argv[0], argv, env)
+PY
   server_pid=$!
 
   wait_for_server "$server_pid"
 }
 
 smoke_chat_completion() {
-  curl -fsS --max-time "$CURL_TIMEOUT" "$OPENAI_BASE_URL/chat/completions" \
+  curl -fsS --max-time "$CHAT_TIMEOUT" "$OPENAI_BASE_URL/chat/completions" \
     -H 'Content-Type: application/json' \
     -d '{"model":"mtplx-qwen36-27b-optimized-speed-fp16","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":64}' \
     >/dev/null || die "MTPLX /v1/chat/completions smoke test failed; see $LOG"

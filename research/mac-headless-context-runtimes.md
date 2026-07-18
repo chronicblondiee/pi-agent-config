@@ -1,10 +1,10 @@
 # Mac headless long-context runtime tests
 
-**Status:** test branch only. Do not promote any default or live Pi config until a specific context tier passes two clean runs.
+**Status:** MTPLX promoted to the primary Mac-local Pi provider by operator decision on 2026-07-18 after one clean 32768-tier curl run and a successful Pi wrapper smoke test. The old `mlx_lm.server` provider remains configured as the fallback.
 
 ## Scope
 
-This note tracks headless Mac runtime candidates for long-context Pi use on the 32 GB M1 Pro path. It does not change the production `mlx-local` provider, `scripts/pi-mlx-local.sh`, `~/projects/mac-mlx-env`, or live `~/.pi/agent`.
+This note tracks headless Mac runtime candidates for long-context Pi use on the 32 GB M1 Pro path. MTPLX is now the live primary path; `mlx-local`, `scripts/pi-mlx-local.sh`, and `~/projects/mac-mlx-env` remain available as the fallback.
 
 ## Candidate 1: MTPLX
 
@@ -21,18 +21,18 @@ Defaults:
 | Setting | Value |
 |---|---|
 | Env | `~/projects/mac-mtplx-env` |
-| Python | `3.12` |
+| Python | `3.12.13` requested; wrappers require `3.12.x` |
 | MTPLX | `mtplx==2.1.0` |
 | Port | `18080` |
-| Pi config dir | `~/.pi/agent-mtplx-test` |
-| Pi provider | `mtplx-test` |
+| Pi config dir | `~/.pi/agent` for primary; `~/.pi/agent-mtplx-test` for isolated tests |
+| Pi provider | `mtplx-local` for primary; `mtplx-test` for isolated tests |
 | Pi model id | `mtplx-qwen36-27b-optimized-speed-fp16` |
 | Candidate model | `Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed-FP16` |
 
 If `mtplx inspect Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed-FP16` rejects the candidate, switch to the MTPLX-recommended Qwen3.6 27B catalog build before running load tests:
 
 ```bash
-MTPLX_HF_MODEL=<catalog-build> scripts/pi-mtplx-test.sh -p "Reply with exactly: ok"
+MTPLX_HF_MODEL=<catalog-build> scripts/pi-mtplx-local.sh -p "Reply with exactly: ok"
 ```
 
 Use only the wrapper or the pinned venv binary:
@@ -66,7 +66,13 @@ curl -fsS http://127.0.0.1:18080/v1/chat/completions \
   -d '{"model":"mtplx-qwen36-27b-optimized-speed-fp16","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":64}' | jq
 ```
 
-Only after those pass:
+Only after those pass, use the primary wrapper:
+
+```bash
+pi-mtplx-local --no-session -p "Reply with exactly: ok"
+```
+
+For isolated test config only:
 
 ```bash
 PI_CODING_AGENT_DIR=$HOME/.pi/agent-mtplx-test \
@@ -171,9 +177,9 @@ Inactive flags to test later:
 
 Custom fallback, only if both server candidates fail: build a thin OpenAI-compatible wrapper around `mlx_lm.generate` to expose `--kv-bits`, `--quantized-kv-start`, and `--max-kv-size`.
 
-## Promotion rule
+## Promotion note
 
-Promote no default changes from this branch unless an exact context tier passes two clean runs. A clean run means HTTP 200, measured memory never enters a swap storm, the server survives, and the same tier repeats with comparable throughput and memory behavior.
+The original conservative rule was to promote no default changes unless an exact context tier passed two clean runs. The live default was promoted after one clean 32768-tier curl run because the operator explicitly chose MTPLX as the primary local Pi runtime. Residual risk: the 32768 tier still needs a second clean run under comparable memory conditions before treating it as fully characterized.
 
 ## Sources checked 2026-07-18
 
