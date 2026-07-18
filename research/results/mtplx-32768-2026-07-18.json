@@ -1,0 +1,139 @@
+{
+  "name": "mtplx-sustained-fp16",
+  "base_url": "http://127.0.0.1:18080/v1",
+  "model": "mtplx-qwen36-27b-optimized-speed-fp16",
+  "command": "scripts/benchmark-openai-runtime.py --name mtplx-sustained-fp16 --base-url http://127.0.0.1:18080/v1 --model mtplx-qwen36-27b-optimized-speed-fp16 --target-tokens 32768 --max-tokens 64 --out research/results/mtplx-32768-2026-07-18.json",
+  "pid": 27532,
+  "started_at": "2026-07-18T15:33:52+0100",
+  "sampler": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 64
+  },
+  "models_before": [
+    200,
+    {
+      "object": "list",
+      "data": [
+        {
+          "id": "mtplx-qwen36-27b-optimized-speed-fp16",
+          "object": "model",
+          "created": 1784385232,
+          "owned_by": "mtplx",
+          "context_length": 262144,
+          "max_context_length": 262144,
+          "max_model_len": 262144
+        }
+      ]
+    },
+    null
+  ],
+  "health_before": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "model": "mtplx-qwen36-27b-optimized-speed-fp16",
+      "generation_mode": "mtp",
+      "runtime_mode": "Sustained MTP",
+      "mtp_enabled": true,
+      "depth": 3,
+      "context_window": 262144,
+      "chip": "Apple M1 Pro",
+      "machine_model": "MacBookPro18,1",
+      "unified_memory_bytes": 34359738368,
+      "mlx_runtime": {
+        "version": "0.32.0"
+      },
+      "profile": {
+        "name": "sustained",
+        "runtime_profile": "native_mtp_sustained"
+      },
+      "backend": {
+        "backend_id": "qwen3_next",
+        "architecture_id": "qwen3-next-mtp",
+        "model_family": "qwen"
+      }
+    },
+    "error": null
+  },
+  "host_before": [
+    "PhysMem: 29G used (2080M wired, 3322M compressor), 2832M unused.",
+    "VM: 250T vsize, 6144M framework vsize, 823438(0) swapins, 2490538(0) swapouts."
+  ],
+  "memory_before": {
+    "timestamp": "2026-07-18T15:33:52+0100",
+    "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 119153 \nPages purgeable: 640 \nPages purged: 2815636 \n\nSwap I/O:\nSwapins: 823438 \nSwapouts: 2490538 \n\nPage Q counts:\nPages active: 1049303 \nPages inactive: 479180 \nPages speculative: 62317 \nPages throttled: 0 \nPages wired down: 133098 \n\nCompressor Stats:\nPages used by compressor: 212630 \nPages decompressed: 21665078 \nPages compressed: 27236812 \n\nFile I/O:\nPageins: 24499566 \nPageouts: 18701 \n\nSystem-wide memory free percentage: 83%",
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   119199.\nPages active:                                1049179.\nPages inactive:                               479301.\nPages speculative:                             62319.\nPages throttled:                                   0.\nPages wired down:                             133098.\nPages purgeable:                                 640.\n\"Translation faults\":                      104967860.\nPages copy-on-write:                         4521263.\nPages zero filled:                         164894190.\nPages reactivated:                           4605015.\nPages purged:                                2815636.\nFile-backed pages:                            148289.\nAnonymous pages:                             1442510.\nPages stored in compressor:                   470630.\nPages occupied by compressor:                 212630.\nDecompressions:                             21665078.\nCompressions:                               27236812.\nPageins:                                    24499568.\nPageouts:                                      18701.\nSwapins:                                      823438.\nSwapouts:                                    2490538."
+  },
+  "runs": [
+    {
+      "target_tokens": 32768,
+      "nonce": "mtplx-sustained-fp16-32768-72e87fb0-cde1-47ec-a8ec-84ce4ae990c5",
+      "http_status": 200,
+      "wall_seconds": 605.7882656660004,
+      "usage": {
+        "prompt_tokens": 36361,
+        "completion_tokens": 64,
+        "total_tokens": 36425,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "error": null,
+      "approx_prompt_tokens_per_wall_second": 60.02262186446433,
+      "approx_total_tokens_per_wall_second": 60.128269338387646,
+      "host_after": [
+        "PhysMem: 31G used (23G wired, 5337M compressor), 241M unused.",
+        "VM: 197T vsize, 6144M framework vsize, 830105(0) swapins, 2583162(0) swapouts."
+      ],
+      "memory_before": {
+        "timestamp": "2026-07-18T15:33:52+0100",
+        "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 118897 \nPages purgeable: 642 \nPages purged: 2815636 \n\nSwap I/O:\nSwapins: 823438 \nSwapouts: 2490538 \n\nPage Q counts:\nPages active: 1048965 \nPages inactive: 479747 \nPages speculative: 62325 \nPages throttled: 0 \nPages wired down: 133098 \n\nCompressor Stats:\nPages used by compressor: 212606 \nPages decompressed: 21665176 \nPages compressed: 27236812 \n\nFile I/O:\nPageins: 24499569 \nPageouts: 18701 \n\nSystem-wide memory free percentage: 83%",
+        "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   118941.\nPages active:                                1048840.\nPages inactive:                               479873.\nPages speculative:                             62325.\nPages throttled:                                   0.\nPages wired down:                             133098.\nPages purgeable:                                 642.\n\"Translation faults\":                      104969621.\nPages copy-on-write:                         4521528.\nPages zero filled:                         164894418.\nPages reactivated:                           4605015.\nPages purged:                                2815636.\nFile-backed pages:                            148295.\nAnonymous pages:                             1442743.\nPages stored in compressor:                   470532.\nPages occupied by compressor:                 212606.\nDecompressions:                             21665176.\nCompressions:                               27236812.\nPageins:                                    24499570.\nPageouts:                                      18701.\nSwapins:                                      823438.\nSwapouts:                                    2490538."
+      },
+      "memory_after": {
+        "timestamp": "2026-07-18T15:43:58+0100",
+        "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 3911 \nPages purgeable: 10 \nPages purged: 2826627 \n\nSwap I/O:\nSwapins: 830105 \nSwapouts: 2562474 \n\nPage Q counts:\nPages active: 118292 \nPages inactive: 117111 \nPages speculative: 194 \nPages throttled: 0 \nPages wired down: 1480731 \n\nCompressor Stats:\nPages used by compressor: 335506 \nPages decompressed: 22366178 \nPages compressed: 28359513 \n\nFile I/O:\nPageins: 24503841 \nPageouts: 18868 \n\nSystem-wide memory free percentage: 11%",
+        "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                     3859.\nPages active:                                 118393.\nPages inactive:                               117177.\nPages speculative:                               195.\nPages throttled:                                   0.\nPages wired down:                            1480731.\nPages purgeable:                                  10.\n\"Translation faults\":                      105730334.\nPages copy-on-write:                         4522680.\nPages zero filled:                         215929867.\nPages reactivated:                           4765895.\nPages purged:                                2826627.\nFile-backed pages:                             60321.\nAnonymous pages:                              175444.\nPages stored in compressor:                   614753.\nPages occupied by compressor:                 335352.\nDecompressions:                             22366344.\nCompressions:                               28359513.\nPageins:                                    24503845.\nPageouts:                                      18868.\nSwapins:                                      830105.\nSwapouts:                                    2562474."
+      },
+      "response_keys": [
+        "choices",
+        "created",
+        "id",
+        "model",
+        "mtplx_stats",
+        "object",
+        "usage"
+      ]
+    }
+  ],
+  "host_after": [
+    "PhysMem: 31G used (23G wired, 4841M compressor), 395M unused.",
+    "VM: 197T vsize, 6144M framework vsize, 830280(0) swapins, 2592854(0) swapouts."
+  ],
+  "memory_after": {
+    "timestamp": "2026-07-18T15:43:59+0100",
+    "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 25107 \nPages purgeable: 48 \nPages purged: 2826637 \n\nSwap I/O:\nSwapins: 830280 \nSwapouts: 2592854 \n\nPage Q counts:\nPages active: 103337 \nPages inactive: 102324 \nPages speculative: 396 \nPages throttled: 0 \nPages wired down: 1515505 \n\nCompressor Stats:\nPages used by compressor: 309192 \nPages decompressed: 22384816 \nPages compressed: 28393814 \n\nFile I/O:\nPageins: 24504006 \nPageouts: 18868 \n\nSystem-wide memory free percentage: 11%",
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                    25037.\nPages active:                                 103463.\nPages inactive:                               102452.\nPages speculative:                               396.\nPages throttled:                                   0.\nPages wired down:                            1515506.\nPages purgeable:                                  48.\n\"Translation faults\":                      105752352.\nPages copy-on-write:                         4523248.\nPages zero filled:                         216005842.\nPages reactivated:                           4766499.\nPages purged:                                2826637.\nFile-backed pages:                             60580.\nAnonymous pages:                              145731.\nPages stored in compressor:                   618496.\nPages occupied by compressor:                 308936.\nDecompressions:                             22385072.\nCompressions:                               28393814.\nPageins:                                    24504007.\nPageouts:                                      18868.\nSwapins:                                      830280.\nSwapouts:                                    2592854."
+  },
+  "models_after": [
+    200,
+    {
+      "object": "list",
+      "data": [
+        {
+          "id": "mtplx-qwen36-27b-optimized-speed-fp16",
+          "object": "model",
+          "created": 1784385839,
+          "owned_by": "mtplx",
+          "context_length": 262144,
+          "max_context_length": 262144,
+          "max_model_len": 262144
+        }
+      ]
+    },
+    null
+  ]
+}

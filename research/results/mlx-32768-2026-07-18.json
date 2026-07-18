@@ -1,0 +1,108 @@
+{
+  "name": "mlx-lm-server-4bit",
+  "base_url": "http://127.0.0.1:8080/v1",
+  "model": "mlx-community/Qwen3.6-27B-4bit",
+  "command": "scripts/benchmark-openai-runtime.py --name mlx-lm-server-4bit --base-url http://127.0.0.1:8080/v1 --model mlx-community/Qwen3.6-27B-4bit --target-tokens 32768 --max-tokens 64 --out research/results/mlx-32768-2026-07-18.json",
+  "pid": 27853,
+  "started_at": "2026-07-18T16:10:05+0100",
+  "sampler": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 64
+  },
+  "models_before": [
+    200,
+    {
+      "object": "list",
+      "data": [
+        {
+          "id": "mlx-community/Qwen3.6-27B-4bit",
+          "object": "model",
+          "created": 1784387405
+        }
+      ]
+    },
+    null
+  ],
+  "health_before": {
+    "status": 200,
+    "body": {},
+    "error": null
+  },
+  "host_before": [
+    "PhysMem: 29G used (2009M wired, 156M compressor), 2726M unused.",
+    "VM: 195T vsize, 6144M framework vsize, 853878(0) swapins, 2592874(0) swapouts."
+  ],
+  "memory_before": {
+    "timestamp": "2026-07-18T16:10:05+0100",
+    "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 172505 \nPages purgeable: 3857 \nPages purged: 2846172 \n\nSwap I/O:\nSwapins: 853878 \nSwapouts: 2592874 \n\nPage Q counts:\nPages active: 1019024 \nPages inactive: 723419 \nPages speculative: 2181 \nPages throttled: 0 \nPages wired down: 128604 \n\nCompressor Stats:\nPages used by compressor: 10005 \nPages decompressed: 22880703 \nPages compressed: 28967730 \n\nFile I/O:\nPageins: 25427745 \nPageouts: 19159 \n\nSystem-wide memory free percentage: 93%",
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   172547.\nPages active:                                1018877.\nPages inactive:                               723563.\nPages speculative:                              2181.\nPages throttled:                                   0.\nPages wired down:                             128604.\nPages purgeable:                                3857.\n\"Translation faults\":                      107709146.\nPages copy-on-write:                         4557736.\nPages zero filled:                         219343739.\nPages reactivated:                           4870552.\nPages purged:                                2846172.\nFile-backed pages:                            456495.\nAnonymous pages:                             1288126.\nPages stored in compressor:                   198217.\nPages occupied by compressor:                  10005.\nDecompressions:                             22880703.\nCompressions:                               28967730.\nPageins:                                    25427746.\nPageouts:                                      19159.\nSwapins:                                      853878.\nSwapouts:                                    2592874."
+  },
+  "runs": [
+    {
+      "target_tokens": 32768,
+      "nonce": "mlx-lm-server-4bit-32768-cb054b4b-048b-48e3-96ad-a84470b6757d",
+      "http_status": 200,
+      "wall_seconds": 924.6256387920002,
+      "usage": {
+        "prompt_tokens": 36364,
+        "completion_tokens": 64,
+        "total_tokens": 36428,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "error": null,
+      "approx_prompt_tokens_per_wall_second": 39.328349198177804,
+      "approx_total_tokens_per_wall_second": 39.39756640059457,
+      "host_after": [
+        "PhysMem: 31G used (26G wired, 159M compressor), 255M unused.",
+        "VM: 199T vsize, 6144M framework vsize, 855380(0) swapins, 2592874(0) swapouts."
+      ],
+      "memory_before": {
+        "timestamp": "2026-07-18T16:10:05+0100",
+        "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 172374 \nPages purgeable: 3857 \nPages purged: 2846172 \n\nSwap I/O:\nSwapins: 853878 \nSwapouts: 2592874 \n\nPage Q counts:\nPages active: 1018794 \nPages inactive: 723752 \nPages speculative: 2191 \nPages throttled: 0 \nPages wired down: 128605 \n\nCompressor Stats:\nPages used by compressor: 10005 \nPages decompressed: 22880703 \nPages compressed: 28967730 \n\nFile I/O:\nPageins: 25427747 \nPageouts: 19159 \n\nSystem-wide memory free percentage: 93%",
+        "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   172417.\nPages active:                                1018688.\nPages inactive:                               723860.\nPages speculative:                              2191.\nPages throttled:                                   0.\nPages wired down:                             128605.\nPages purgeable:                                3857.\n\"Translation faults\":                      107710734.\nPages copy-on-write:                         4558003.\nPages zero filled:                         219343948.\nPages reactivated:                           4870552.\nPages purged:                                2846172.\nFile-backed pages:                            456507.\nAnonymous pages:                             1288232.\nPages stored in compressor:                   198217.\nPages occupied by compressor:                  10005.\nDecompressions:                             22880703.\nCompressions:                               28967730.\nPageins:                                    25427748.\nPageouts:                                      19159.\nSwapins:                                      853878.\nSwapouts:                                    2592874."
+      },
+      "memory_after": {
+        "timestamp": "2026-07-18T16:26:38+0100",
+        "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 15450 \nPages purgeable: 14326 \nPages purged: 2881421 \n\nSwap I/O:\nSwapins: 855380 \nSwapouts: 2592874 \n\nPage Q counts:\nPages active: 150259 \nPages inactive: 151636 \nPages speculative: 964 \nPages throttled: 0 \nPages wired down: 1727212 \n\nCompressor Stats:\nPages used by compressor: 10206 \nPages decompressed: 22886295 \nPages compressed: 28967730 \n\nFile I/O:\nPageins: 25436662 \nPageouts: 19397 \n\nSystem-wide memory free percentage: 15%",
+        "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                    15433.\nPages active:                                 150274.\nPages inactive:                               151627.\nPages speculative:                               967.\nPages throttled:                                   0.\nPages wired down:                            1727212.\nPages purgeable:                               14326.\n\"Translation faults\":                      108186074.\nPages copy-on-write:                         4562112.\nPages zero filled:                         235311161.\nPages reactivated:                           4871215.\nPages purged:                                2881421.\nFile-backed pages:                             69335.\nAnonymous pages:                              233533.\nPages stored in compressor:                   192328.\nPages occupied by compressor:                  10206.\nDecompressions:                             22886295.\nCompressions:                               28967730.\nPageins:                                    25436665.\nPageouts:                                      19397.\nSwapins:                                      855380.\nSwapouts:                                    2592874."
+      },
+      "response_keys": [
+        "choices",
+        "created",
+        "id",
+        "model",
+        "object",
+        "system_fingerprint",
+        "usage"
+      ]
+    }
+  ],
+  "host_after": [
+    "PhysMem: 31G used (26G wired, 159M compressor), 255M unused.",
+    "VM: 199T vsize, 6144M framework vsize, 855380(0) swapins, 2592874(0) swapouts."
+  ],
+  "memory_after": {
+    "timestamp": "2026-07-18T16:26:39+0100",
+    "memory_pressure": "The system has 34359738368 (2097152 pages with a page size of 16384).\n\nStats: \nPages free: 15534 \nPages purgeable: 14183 \nPages purged: 2881421 \n\nSwap I/O:\nSwapins: 855380 \nSwapouts: 2592874 \n\nPage Q counts:\nPages active: 150283 \nPages inactive: 151443 \nPages speculative: 976 \nPages throttled: 0 \nPages wired down: 1727392 \n\nCompressor Stats:\nPages used by compressor: 10206 \nPages decompressed: 22886295 \nPages compressed: 28967730 \n\nFile I/O:\nPageins: 25436676 \nPageouts: 19397 \n\nSystem-wide memory free percentage: 15%",
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                    15517.\nPages active:                                 150281.\nPages inactive:                               151444.\nPages speculative:                               976.\nPages throttled:                                   0.\nPages wired down:                            1727392.\nPages purgeable:                               14183.\n\"Translation faults\":                      108189728.\nPages copy-on-write:                         4562681.\nPages zero filled:                         235313137.\nPages reactivated:                           4871215.\nPages purged:                                2881421.\nFile-backed pages:                             69357.\nAnonymous pages:                              233344.\nPages stored in compressor:                   192328.\nPages occupied by compressor:                  10206.\nDecompressions:                             22886295.\nCompressions:                               28967730.\nPageins:                                    25436677.\nPageouts:                                      19397.\nSwapins:                                      855380.\nSwapouts:                                    2592874."
+  },
+  "models_after": [
+    200,
+    {
+      "object": "list",
+      "data": [
+        {
+          "id": "mlx-community/Qwen3.6-27B-4bit",
+          "object": "model",
+          "created": 1784388399
+        }
+      ]
+    },
+    null
+  ]
+}

@@ -85,6 +85,27 @@
         }
       ]
     },
+    "mtplx-local": {
+      "name": "MTPLX (Mac local)",
+      "baseUrl": "http://127.0.0.1:18080/v1",
+      "api": "openai-completions",
+      "apiKey": "mtplx-local",
+      "models": [
+        {
+          "id": "mtplx-qwen36-27b-optimized-speed-fp16",
+          "name": "Qwen3.6 27B MTPLX optimized FP16",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "reasoning": true,
+          "compat": {
+            "thinkingFormat": "qwen",
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    },
     "ollama-cloud": {
       "name": "Ollama Cloud",
       "baseUrl": "https://ollama.com/v1",

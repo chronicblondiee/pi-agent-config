@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "mtplx-test": {
+      "name": "MTPLX isolated test (Mac local)",
+      "baseUrl": "http://127.0.0.1:18080/v1",
+      "api": "openai-completions",
+      "apiKey": "mtplx-test",
+      "models": [
+        {
+          "id": "mtplx-qwen36-27b-optimized-speed-fp16",
+          "name": "Qwen3.6 27B MTPLX test",
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "reasoning": true,
+          "compat": {
+            "thinkingFormat": "qwen",
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    }
+  }
+}
