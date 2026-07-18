@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-18 — ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
+**Last updated:** 2026-07-18 — ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); clarified Mac prefill vs decode throughput and memory-bandwidth scaling; see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
 
 ---
 
@@ -329,6 +329,14 @@ Measured 2026-07-17 on this Mac, single model resident, no other large processes
 | Pi auto-compaction threshold | `contextWindow` **32768** in `pi-config/models.json` | 32768 (no longer live, same number by coincidence) | Interpolated between two real measured points — see the ceiling-test note below |
 
 Both models are dense (all params active per token, unlike the old Qwen3.6-35B-A3B MoE setup) — this prefill rate is roughly **9× slower** than that MoE setup's observed ~364 tok/s prefill (3B active). This was a known, accepted trade-off: less memory pressure and a larger safe context window than the old 24576 cap, at the cost of prefill speed on large prompts. See [Why active params matter](#why-active-params-matter-and-toks-alone-doesnt).
+
+#### Prefill vs decode throughput
+
+The ~40–42 tok/s Mac numbers above are **prefill throughput**: the server is ingesting a long prompt whose tokens are already known, so MLX can batch prompt positions into larger matrix operations and reuse the dense weights across that batch. They should not be read as batch-1 autoregressive **decode** speed.
+
+The simple memory-bandwidth estimate still applies most directly to dense decode: for each newly generated token, the next token depends on the previous one, so the runtime has far less batching room and must keep streaming the full active weight set. A 15 GB dense 4-bit model on an M1 Pro-class memory bus can therefore have a decode roofline around the low-teens tok/s even while long-prompt prefill measures around 40 tok/s.
+
+This should scale directionally on Macs with higher unified-memory bandwidth: the dense decode roofline rises, and long-prompt prefill usually benefits too. Do not assume perfect linear scaling, though — prefill also depends on MLX/Metal kernel efficiency, batch shape, attention/KV-cache work, thermals, and transient GPU compute buffers.
 
 Qwen3.6 27B won the comparison on published benchmark quality at essentially identical size/speed/memory cost, which is why it replaced Devstral as primary within the same day.
 
