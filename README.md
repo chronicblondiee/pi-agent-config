@@ -2,7 +2,7 @@
 
 Personal reference for running [pi.dev](https://pi.dev/) (Mario Zechner's terminal coding agent harness) against local models served by LM Studio on this workstation.
 
-**Last updated:** 2026-07-18 — added the compact `karpathy-guidelines` skill install across Codex, Claude Code, and Pi; promoted MTPLX to the primary Mac-local Pi provider, pinned the MTPLX env to Python 3.12.13 / MTPLX 2.1.0, and added first curl-level MTPLX-vs-`mlx_lm.server` benchmark results; earlier same-day notes: ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); clarified Mac prefill vs decode throughput and memory-bandwidth scaling; see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
+**Last updated:** 2026-07-18 — removed the `karpathy-guidelines` skill (Codex, Claude Code, and Pi copies, plus the in-repo source); promoted MTPLX to the primary Mac-local Pi provider, pinned the MTPLX env to Python 3.12.13 / MTPLX 2.1.0, and added first curl-level MTPLX-vs-`mlx_lm.server` benchmark results; earlier same-day notes: ran a real ceiling test on the Mac `mlx-local` Qwen3.6 27B setup (48017 tokens, no real safety margin), then raised `contextWindow` 30720 → 32768 based on interpolation between two real measured points (comfortable at 30017, tight at 48017); clarified Mac prefill vs decode throughput and memory-bandwidth scaling; see [Change notes](#change-notes) for full history including the 2026-07-17 Devstral→Qwen3.6-27B model switch.
 
 ---
 
@@ -588,13 +588,12 @@ In-repo skills live at [`pi-config/skills/<name>/`](./pi-config/skills/) and are
 
 | Skill | What it covers |
 |---|---|
-| **karpathy-guidelines** | Compact coding discipline: state important assumptions, keep edits small and local, avoid speculative abstractions, and verify before finishing. |
 | **diagnose-tool-call-failure** | Triage for malformed tool calls — wrong JSON, narration instead of calls, runaway output. Walks through chat template, APPEND_SYSTEM.md, models.json shape, context overflow, and falling back to Qwen. |
 | **checkpoint-recovery-walkthrough** | The git-checkpoint recovery flow: `/checkpoints` → pick SHA → `/restore` → verify, plus the cross-session fallback via `git log --grep="\[pi-checkpoint\]"`. |
 
 ```fish
 mkdir -p ~/.pi/agent/skills
-for skill in karpathy-guidelines diagnose-tool-call-failure checkpoint-recovery-walkthrough;
+for skill in diagnose-tool-call-failure checkpoint-recovery-walkthrough;
   ln -sfn ~/projects/pi-agent-config/pi-config/skills/$skill ~/.pi/agent/skills/$skill;
 end
 ```
@@ -677,7 +676,6 @@ You can edit those files directly, but every advanced setting is exposed in the 
 ## Change notes
 
 ### 2026-07-18
-- Added the compact [`karpathy-guidelines`](./pi-config/skills/karpathy-guidelines/SKILL.md) skill for simple, scoped, explicit, verified coding changes. Installed copies live under `~/.codex/skills/karpathy-guidelines/` and `~/.claude/skills/karpathy-guidelines/`; Pi uses the repo-backed `~/.pi/agent/skills/karpathy-guidelines` symlink.
 - Promoted MTPLX to the live Mac-local Pi default: added `mtplx-local` to [`pi-config/models.json`](./pi-config/models.json), set live `~/.pi/agent/settings.json` to `defaultProvider: "mtplx-local"` and `defaultModel: "mtplx-qwen36-27b-optimized-speed-fp16"`, and added [`scripts/pi-mtplx-local.sh`](./scripts/pi-mtplx-local.sh), [`scripts/start-mtplx-local-server.sh`](./scripts/start-mtplx-local-server.sh), plus the `~/.local/bin/pi-mtplx-local` symlink. Live config backups were written as `~/.pi/agent/models.json.bak.20260718-164731` and `~/.pi/agent/settings.json.bak.20260718-164731`.
 - Tightened the MTPLX Python pin: [`scripts/setup-mac-mtplx-env.sh`](./scripts/setup-mac-mtplx-env.sh) now requests Python `3.12.13`, and both MTPLX wrappers require the venv to be Python `3.12.x` before starting the server. The installed `mtplx==2.1.0` metadata allows Python `>=3.11`, but this local runtime stays on the known-good 3.12 line instead of the machine-wide `~/.local/bin/python3.14` symlink.
 - Added an isolated MTPLX headless long-context test path on branch `test/mac-headless-context-runtimes`: [`scripts/setup-mac-mtplx-env.sh`](./scripts/setup-mac-mtplx-env.sh), [`scripts/pi-mtplx-test.sh`](./scripts/pi-mtplx-test.sh), [`pi-config/models.mtplx-test.json`](./pi-config/models.mtplx-test.json), and [`research/mac-headless-context-runtimes.md`](./research/mac-headless-context-runtimes.md). This originally used `mtplx==2.1.0`, `~/projects/mac-mtplx-env`, port `18080`, provider `mtplx-test`, model id `mtplx-qwen36-27b-optimized-speed-fp16`, and `~/.pi/agent-mtplx-test` to evaluate MTPLX without disturbing the then-production `mlx-local` provider.
